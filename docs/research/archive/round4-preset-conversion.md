@@ -68,7 +68,7 @@
 
 | 项 | Tavern | Risu | 转换 |
 |---|---|---|---|
-| 换行 `$n` | 无(`\n` 直接写) | OUT 里 `$n` 会被转成换行(`scripts.ts:154`) | 若 Tavern 的 replaceString 里本意是字面 `$n` 需转义为 `$$n`(Risu 把 `$n` 当换行处理) |
+| 换行 `$n` | 无(`\n` 直接写) | OUT 里字面 `$n` 会在一切替换前被 `replaceAll("$n","\n")` 转成换行(`scripts.ts:154`) | **`$$n` 转义无效**(replaceAll 先跑,`$$n` 里的 `$n` 仍被吃掉 → `$\n`);字面 `$n` 无法表达,需改其他占位符或接受 `\n` 语义 |
 | 命名组 | `$<name>` | `$<name>`(有效)、`$(name)`(无效) | 统一用 `$<name>` |
 | 尾部 `>` 自动补换行 | 无 | Risu OUT 以 `>` 结尾会自动 `+\n` | 若不需要可用 `no_end_nl` action |
 | 宏 | replaceString 恒被宏替换 | OUT 替换后必再过 CBS | 宏语法按 Round 2 翻译 |

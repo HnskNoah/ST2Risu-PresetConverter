@@ -33,8 +33,9 @@ Risu 官方 `importPreset` 的 ST 分支只转 7 个字段(`database.svelte.ts:2
 | `openai_max_context` | `maxContext` | 直通(**官方不转**,默认 4000) |
 | `openai_max_tokens` | `maxResponse` | 直通(**官方不转**,默认 300) |
 | `name` | `name` | 直通(**官方硬编码 "Imported ST Preset" `:2493`,我们修复**) |
-| `seed` / `n` / `stream_openai` / `squash_system_messages` / `max_context_unlocked` / `names_behavior` / `media_inlining` / `assistant_prefill`(除 prompt 处理外) | — | **丢弃 + 报告** |
+| `seed` / `n` / `stream_openai` / `squash_system_messages` / `max_context_unlocked` / `names_behavior` / `media_inlining` / `assistant_prefill`(除 prompt 处理外) / `assistant_impersonation` / `use_sysprompt` / `inline_image_quality` | — | **丢弃 + 报告** |
 | `apiType` / `chat_completion_source` / 模型字段 | `apiType` / `aiModel` | 尽力映射,否则保留 Risu 默认 + 报告 |
+| `bias_preset_selected` | `bias`(仅当提供 ST 全局 bias_presets) | **preset 文件只有选中项名字**(`openai.js:362`,isConnection=false),条目内容在 ST 全局 `bias_presets`(`:424-425`,`{id,text,value}[]`),不随 preset 导出 → 需转换器**额外输入 ST 全局 bias_presets** 才能映射 `{text,value}`→`[text,value]`(id 丢弃);否则报告 manual:提示"bias preset 'X' 需从 ST 全局设置迁移"。Risu 侧:`bias:[string,number][]`(`database.svelte.ts:1603`),text 运行时会过 `risuChatParser`(`index.svelte.ts:1156`)并 tokenize(`requests.ts:185-200`,支持 `[[tokenid]]`/`value=-101` strongBan) |
 
 ## 3. prompts → promptTemplate 映射
 
@@ -55,6 +56,8 @@ Risu 官方 `importPreset` 的 ST 分支只转 7 个字段(`database.svelte.ts:2
 
 - 顺序:仅驱动 `prompt_order[0].order`(官方 `:2405`;多角色组只取第一组,报告提示)。`enabled=false` 跳过,找不到 `console.log`。
 - role 归一化:官方 `normalizePromptTemplate`(`:2524-2556`)/`normalizeImportedPromptRole`(`prompt.ts:93-101`),`assistant/char→bot`,非法→`system`。我们复用同一规则。
+- **prompt 级丢弃字段**(round4 §2.2 独有):`injection_trigger`(impersonate/continue)、`injection_order`、`forbid_overrides` → **无对应,丢弃 + 报告**;`injection_position`(RELATIVE/ABSOLUTE)由数组顺序承载(无绝对/相对区分);`injection_depth` 需换算成 chat 卡 range,无等价语义。
+- **nudge/格式串系列**(round4 §2.4 独有):`group_nudge_prompt`/`impersonation_prompt`/`new_chat_prompt`/`new_group_chat_prompt`/`continue_nudge_prompt`/`send_if_empty`/`new_example_chat_prompt` → **无等价**:开场/续写/扮演引导转 `{{firstmsg}}` 逻辑或触发器;`wi_format`/`scenario_format`/`personality_format` → description/chat 卡 `innerFormat`(模板化替换 `{0}`/`{lastChatMessage}` → Risu CBS)。
 
 ## 4. 正则脚本:13 字段 → customscript 规则(核心)
 
@@ -72,10 +75,10 @@ Risu 官方 `importPreset` 的 ST 分支只转 7 个字段(`database.svelte.ts:2
 | Tavern 字段 | 处理 |
 |---|---|
 | `findRegex` | → `in`。语法兼容(两边 JS RegExp);`/pattern/flags` 形式拆出 flag 合并进 Risu flag(注意:Tavern 支持的 `X/A/J` 等 Risu 白名单 `dgimsuvy` 之外 → 报告,删掉或改内联) |
-| `replaceString` | → `out`。`{{match}}`→`$&` 等价;`$n`/`$<name>` 原生兼容;若 out 以 `>` 结尾 → 加 `<no_end_nl>`(否则 Risu 自动补 `\n`,Tavern 不加) |
+| `replaceString` | → `out`。`{{match}}`→`$&` 等价;`$1`~`$99` 与 `$<name>`(命名组)原生兼容;**字面 `$n` 不行**:Risu 在一切替换前先 `replaceAll("$n","\n")`(`scripts.ts:154`),`$n` 恒变换行,`$$n` 转义无效;若 out 以 `>` 结尾 → 加 `<no_end_nl>`(否则 Risu 自动补 `\n`,Tavern 不加) |
 | `placement` 数组 | 拆 type:`USER_INPUT(1)`→`editinput`;`AI_OUTPUT(2)`→`editoutput`(仅显示分支 `editdisplay`);`SLASH_COMMAND(3)`/`REASONING(6)`/`WORLD_INFO(5)` → **报告:无对应,丢弃或按 §5 提示** |
 | 三分法 | `markdownOnly&&!promptOnly`→`editdisplay`;`promptOnly&&!markdownOnly`→`editprocess`(发请求前处理最贴近 `script.js:4447`);**双开**→拆 `editdisplay`+`editprocess` 两脚本;都 false(默认路径,`cleanUpMessage`/用户输入)→`editoutput`+`editinput` |
-| `minDepth`/`maxDepth` | → OUT 包 `{{#if {{and::GE(chatindex,last-max)::LE(chatindex,last-min)}}}}$&{{/if}}`,加 `ableFlag=true`+`<cbs>`;`in` 需吞尾换行(round5 §7) |
+| `minDepth`/`maxDepth` | → OUT 包 `{{#if {{and::greaterequal(chatindex,last-max)::lessequal(chatindex,last-min)}}}}$&{{/if}}`,加 `ableFlag=true`+`<cbs>`;`in` 需吞尾换行(round5 §7)。宏名是 `greaterequal`/`lessequal`(`cbs.ts:927,936`),**无 `ge`/`le`** |
 | `trimStrings` | **丢弃 + 报告**(无等价);高价值可手动焊进 out,不做通用 |
 | `runOnEdit` | **丢弃 + 报告**(无等价,Risu 略宽松) |
 | `substituteRegex` | `0`→无;`1(RAW)`→`<cbs>` + §6 宏翻译;`2(ESCAPED)`→**报告:需人工**(静态转不了运行时转义) |
@@ -99,7 +102,9 @@ Risu 官方 `importPreset` 的 ST 分支只转 7 个字段(`database.svelte.ts:2
 
 来源:Tavern `macros/definitions/*.js` + `macros.js`;Risu `cbs.ts` 全量 + 规范化 `parser.svelte.ts:1055`(小写 + 删空格/下划线/连字符)。
 
-**A 直通**(同名同义):`char`/`user`/`description`/`personality`/`scenario`/`persona`/`newline`(=Risu `br`)`/reverse`/`random::a::b`/`pick`/`roll`(Risu 不支持 `+N`)/`model`/`getvar`/`setvar`/`addvar`/`getglobalvar`/`maxContext`/`lastMessage`/`lastMessageId`/`//`/`noop`→`blank`。
+**A 直通**(同名同义):`char`/`user`/`description`/`personality`/`scenario`/`persona`/`newline`(=Risu `br`)`/reverse`/`random::a::b`/`pick`/`roll`(Risu 不支持 `+N`)/`model`/`getvar`/`getglobalvar`/`maxContext`/`lastMessage`/`lastMessageId`/`//`/`noop`→`blank`。
+
+**写变量宏(round9 修订)**:`setvar`/`addvar`/`setdefaultvar` **归入 manual 报告**,不是 A 直通。Risu 中三者仅 `runVar=true` 时执行(cbs.ts:816,832,851),prompt 卡渲染 `runVar=false` → 字面量残留、变量不写入。报告 reason 提示用触发器 effect / 消息重处理 / `customPromptTemplateToggle` 迁移。详见 `round9-risu-chatvar-runtime.md`。
 
 **B 改写**(同名不同义):
 | Tavern | Risu | 差异 |
@@ -122,8 +127,9 @@ Risu 官方 `importPreset` 的 ST 分支只转 7 个字段(`database.svelte.ts:2
 | `weekday` / `datetimeformat::fmt` | `date::dddd` / `date::fmt`(仅子集) |
 | `{{if}}...{{else}}` | `{{#when}}...{{:else}}` |
 | `hasExtension::x` | `moduleenabled::x` |
-| `incvar`/`decvar` | `addvar::n::1` / `addvar::n::-1`(返回空串差异) |
 | `space::N` | 无(用 `cbr`) |
+
+> **变量写宏(round9 修订,延伸)**:`incvar`/`decvar` **不翻译为 `addvar::n::1`**(Risu 无此二宏,且翻译后 `addvar` 仍仅 `runVar=true` 执行)。与 `setvar`/`addvar`/`setdefaultvar` 一样**归入 manual 报告**,保留原名。`addglobalvar`/`incglobalvar`/`decglobalvar`/`hasvar`/`deletevar`/`hasglobalvar`/`deleteglobalvar` 同理(Risu 无等价或仅触发器/UI 可写)。
 
 **D 原样保留(安全)**:Risu 对未知宏透传(`parser.svelte.ts:1771-1774`),Tavern 同 → 未匹配宏原样保留即可:`group`/`groupNotMuted`/`notChar`/`charPrompt`/`instruct*`/`creatorNotes`/`greeting`/`summary`/`charPrefix` 等。
 
@@ -191,8 +197,10 @@ compose(parts) → {preset, report}
 | 群聊 | 成员级正则/世界书在 Risu 群聊**不生效**,需下沉群 `customscript`/`globalLore`;request/display 触发器跳过群 | `scripts.ts:106`;`request.ts:241-248`;`lorebook.svelte.ts:79-82` |
 | 打包分发 | **模块** `.risum`/`.charx`(regex+trigger+lorebook+assets+cjs 一体),`moduleIntergration` 随预设携带;模块无 variables 字段,默认变量用 trigger 初始化 | `modules.ts:19-35,398-427` |
 | 变量写入路径 | 全局变量**无 setglobalvar 宏**,只能 toggle/UI;聊天级变量用触发器写 | `chatVar.svelte.ts`;`cbs.ts:861` |
+| ST 变量初始化卡(`{{setvar::x::内容}}`) | **不落 prompt 卡**:卡内 setvar 不执行(runVar=false,字面量残留)。落**触发器 setvar effect** + `{{#when}}`/`{{getvar}}` 读;或迁 `customPromptTemplateToggle` + `{{getglobalvar::toggle_x}}` | round9 §4-6;`cbs.ts:816,832,851`;`index.svelte.ts:146` |
 | REASONING 正则 | 用原生思考参数替代(thinkingType/thinkingTokens/reasonEffort),而非正则提取 | `anthropic.ts:364-383`;`shared.ts:311` |
 | Instruct/格式串 | `instructChatTemplate`/`JinjaTemplate`/`systemContentReplacement`/`ooba.formating` 分场景承接;无单一 1:1 字段 | `chatTemplate.ts:27-38`;`request.ts:353-358` |
+| Tavern Instruct preset(独立文件,不在 OpenAI preset 内) | **需单独转换**:`input_sequence`/`output_sequence`/`system_prompt`/stop 序列 → `instructChatTemplate` 或 Jinja 模板;现有转换未做,列为 phase 2 | round4 §4 |
 
 **触发器使用边界**(转换器生成触发器时):display/request 模式被 allowlist 沙箱化(不能读历史、变量不落盘);`{{chatID}}` 恒 -1;V1 已弃用(用 V2);无否定条件;递归上限 10;低权限效果需模块/角色 lowLevelAccess。
 

@@ -18,8 +18,8 @@ const DROPPED_NO_EQUIVALENT = [
   'image_inlining',
   'video_inlining',
   'inline_image_quality',
-  'claude_use_sysprompt',
-  'use_makersuite_sysprompt',
+  'use_sysprompt',
+  'assistant_impersonation',
   'function_calling',
   'enable_web_search',
   'request_images',
@@ -36,11 +36,17 @@ const BEHAVIOR_MANUAL = [
   'continue_postfix',
   'continue_prefill',
   'send_if_empty',
-  'assistant_impersonation',
 ] as const;
 
-// 思考参数:v1 报告 manual,待调研 Risu 思考参数映射后转
-const REASONING_MANUAL = ['reasoning_effort', 'show_thoughts'] as const;
+// 思考参数:show_thoughts v1 报告 manual(待调研);reasoning_effort 已映射到 Risu reasonEffort
+const REASONING_MANUAL = ['show_thoughts'] as const;
+
+// ST reasoning_effort -> Risu reasonEffort(0=Low/1=Medium/2=High,3=XHigh 无 ST 等价)
+const REASONING_EFFORT_MAP: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
 
 // 转换器消费或已报告的顶层字段白名单(采样器/上下文/name/assistant_prefill/prompts/
 // prompt_order/extensions/bias_preset_selected + DROPPED 列表 + 连接类 + 格式串)。
@@ -59,6 +65,7 @@ const CONSUMED_OR_REPORTED = new Set<string>([
   'wi_format',
   'scenario_format',
   'personality_format',
+  'reasoning_effort',
   'temperature',
   'frequency_penalty',
   'presence_penalty',
@@ -99,7 +106,7 @@ export function mapFields(top: TavernPreset, report: Report): MapFieldsResult {
   if (hasValue(top.bias_preset_selected)) {
     report.add('topLevel', {
       field: 'bias_preset_selected',
-      action: 'dropped',
+      action: 'manual',
       reason: 'bias 本体在 ST 侧 openai_settings.bias_presets,preset 文件仅存名字',
       suggestion: '如需要,从 ST 全局设置手动迁移 bias 数组到 Risu bias',
     });
@@ -132,13 +139,33 @@ export function mapFields(top: TavernPreset, report: Report): MapFieldsResult {
     }
   }
 
-  // 思考参数:v1 报告 manual(SCOPE 决策)
+  // 思考参数:show_thoughts v1 报告 manual(SCOPE 决策)
   for (const field of REASONING_MANUAL) {
     if (hasValue(top[field])) {
       report.add('topLevel', {
         field,
         action: 'manual',
         reason: 'v1 未映射,待调研 Risu 思考参数映射',
+      });
+    }
+  }
+
+  // reasoning_effort -> Risu reasonEffort(ST low/medium/high 映射到 0/1/2)
+  if (hasValue(top.reasoning_effort)) {
+    const r = String(top.reasoning_effort).toLowerCase();
+    const mapped = REASONING_EFFORT_MAP[r] ?? (Number.isInteger(Number(r)) ? Number(r) : undefined);
+    if (mapped !== undefined && mapped >= 0 && mapped <= 3) {
+      out.reasonEffort = mapped;
+      report.add('topLevel', {
+        field: 'reasoning_effort',
+        action: 'converted',
+        reason: `reasoning_effort '${String(top.reasoning_effort)}' -> Risu reasonEffort=${mapped}(0=Low/1=Medium/2=High/3=XHigh)`,
+      });
+    } else {
+      report.add('topLevel', {
+        field: 'reasoning_effort',
+        action: 'manual',
+        reason: `reasoning_effort '${String(top.reasoning_effort)}' 无 Risu 等价(auto 由模型决定,Risu 仅 Low/Medium/High/XHigh),未写入`,
       });
     }
   }

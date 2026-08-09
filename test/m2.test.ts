@@ -78,10 +78,13 @@ test('replaceString 尾部 > -> 去掉 > 且 flag 含 <no_end_nl>', () => {
   assert.match(out[0].flag, /<no_end_nl>/);
 });
 
-test('disabled -> dropped,不生成脚本', () => {
+test('disabled -> type=disabled 保留脚本(内容在,永不执行,可重新启用)', () => {
   const { out, report } = run([{ ...base, disabled: true }]);
-  assert.equal(out.length, 0);
-  assert.equal(report.sections.regex[0].action, 'dropped');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].type, 'disabled');
+  assert.equal(out[0].in, 'x');
+  assert.equal(out[0].out, 'y');
+  assert.ok(report.sections.regex.some((e) => e.action === 'converted' && e.type === 'disabled'));
 });
 
 test('placement SLASH_COMMAND(3) -> dropped', () => {

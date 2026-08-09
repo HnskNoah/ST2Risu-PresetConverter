@@ -3,7 +3,7 @@
 > **目标北极星:`docs/GOALS.md`(通用转换器——任意 ST preset,非特定 preset 专用)。本稿为实现它的设计。**
 
 日期:2026-08-09
-依据:round1-6 全部调研(`research/round*.md`)+ Risu 能力全景(`research/round6-risu-capabilities.md`)
+依据:round1-9 全部调研(`research/round*.md`)+ Risu 能力全景(`research/round6-risu-capabilities.md`)+ 变量运行时门控实证(`research/round9-risu-chatvar-runtime.md`)
 状态:设计定稿,可据此编码
 
 ---
@@ -181,6 +181,7 @@ in 需吞掉尾部换行(如 findRegex 末尾补 [\s\S]*),避免删除后留空�
 
 对 **findRegex(需 `<cbs>` 时)与 replaceString、prompt 文本**分别过 `translateMacros(text)`:
 - 查 `macroTable.js` 四类:A 直通 / B 改写(替换为 Risu 等价)/ C 翻译(映射建议)/ D 未知(原样保留)。
+- **写变量宏例外(round9)**:`setvar`/`addvar`/`setdefaultvar` 归 **manual 报告**——Risu 中仅 `runVar=true` 执行(cbs.ts:816,832,851),prompt 卡渲染 `runVar=false` 字面量残留、变量不写入;提示用触发器 effect / 消息重处理 / `customPromptTemplateToggle` 迁移。`getvar`/`getglobalvar` 读取处处有效,保持 A 直通。
 - 输出统一小写无分隔形式(Risu 宏名规范化保证命中,`parser.svelte.ts:1055`)。
 - 每次改写累积 `warnings.macros[]`(尤其 B/C 类)。
 
@@ -264,3 +265,5 @@ in 需吞掉尾部换行(如 findRegex 末尾补 [\s\S]*),避免删除后留空�
 | 10 | **深度过滤实现(M3)** | `minDepth/maxDepth` → OUT `{{#if}}` 守卫(round5 §7):`chatindex ∈ [last-max, last-min]`,`and::GE::LE`(GE 在前),`{{? {{lastmessageid}}-N}}` 算术宏;门控 `min>0 \|\| max≠null`(ST 无过滤序列化 `minDepth:0/maxDepth:null` 不触发);flag 加 `<cbs>`;in 吞尾换行(`[\s\S]*`,剥行尾 `$`,幂等);`{{chatindex}}=-1` 边界报 degraded 不写兜底 |
 | 11 | **宏翻译表实现(M3)** | `macroTable.ts` 四类:A 直通 / B 同名不同义(kept 报告)/ C 翻译(kept→rewritten)/ D 未知(kept-unknown);`{{random a,b}}` 空格语法→`::`;`{{setglobalvar}}` 无 Risu 等价→manual(全局变量仅触发器/UI 可写);应用于卡 text/innerFormat 与正则 out(/需 `<cbs>` 时的 in) |
 | 12 | 宏名规范化 | A 集合存规范化形式(小写+删 `_`/`-`/空格,Risu parser.svelte.ts:1055),`prefill_supported`→`prefillsupported` 才命中 |
+| 13 | **setvar 非 A 直通(round9 修正)** | `setvar`/`addvar`/`setdefaultvar` 仅 `runVar=true` 执行(cbs.ts:816,832,851);prompt 卡渲染 `runVar=false` → 字面量残留、变量不写入。从 A_DIRECT 移出 → **manual 报告**(同 `setglobalvar`);报告 reason 提示用触发器 effect / 消息重处理 / `customPromptTemplateToggle` 迁移。`getvar`/`getglobalvar` 保持 A 直通。详见 `research/round9-risu-chatvar-runtime.md` |
+| 14 | **setvar → start 触发器(round10)** | `setvar`/`addvar`/`incvar`/`decvar` 不再仅报告,改由 `mapTriggers.ts` 提取为 **start 触发器 setvar effect**,并从卡文本剔除宏(避免 runVar=false 字面量残留)。依据:ST variables.js:232-246(setvar 每次 prompt 构建执行);Risu `runTrigger('start')` 每次 `sendChat()` 构建 prompt 前执行(index.svelte.ts:888)、`case 'setvar'` 静默写 `chat.scriptstate`(triggers.ts:1334)。**否决 `request`**:其以 `displayMode=true` 运行,setvar 只写 tempVars 不落盘。映射:setvar→`=`、addvar→`+=`、incvar→`+=1`、decvar→`-=1`。嵌套值(如 `{{setvar::X::{{char}}}}`)不提取、保留原文 + manual 报告。输出:CLI 额外写 `<base>.module.json`(`{type:'risuModule', name, description, id, trigger}`,Risu 模块导入 schema `modules.ts:283`),需在"模块"页启用;`convert()` 返回 `{preset, module, report}`。报告:macros 动作 `converted`。测试:`test/m4.test.ts` |

@@ -69,6 +69,7 @@
   - **正则脚本全程 runVar=false**(`scripts.ts:133,248,291`)→ **OUT 只可读变量,不可写**。
   - 触发器 `setvar`/`v2SetVar` 直接写,无门控。
   - 世界书 content 不可写。
+  - **prompt 卡渲染 runVar=false**(`index.svelte.ts:748-763`)→ 卡内 `{{setvar}}` 不执行、字面量残留(vitest 实证,见 round9-risu-chatvar-runtime.md)。
 - **状态标记结论**:"检测到标签→置 flag→后续按 flag 行为" = `exists` 条件 + `setvar` 效果(触发器),prompt 侧用 `{{#when::var::}}`/`{{getvar}}` 读。正则做不到写。
 - **没有 setglobalvar 宏**:全局变量只能 toggle/UI 写。
 

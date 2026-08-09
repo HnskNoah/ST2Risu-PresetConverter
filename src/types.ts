@@ -111,10 +111,41 @@ export interface MapFieldsResult {
   repetition_penalty: number;
   maxContext: number;
   maxResponse: number;
+  reasonEffort?: number;
   name?: string;
 }
 
 export interface RisuPreset extends MapFieldsResult {
   promptTemplate: RisuPromptCard[];
   regex: RisuCustomScript[];
+}
+
+// —— 触发器(ST setvar 宏 → Risu trigger)——
+
+export interface ExtractedSetVar {
+  name: string;
+  operator: '=' | '+=' | '-=' | '*=' | '/=';
+  value: string;
+}
+
+export interface TriggerScript {
+  comment: string;
+  type: 'start' | 'manual' | 'output' | 'input' | 'display' | 'request';
+  conditions: unknown[];
+  effect: unknown[];
+  lowLevelAccess?: boolean;
+}
+
+export interface RisuModule {
+  type: 'risuModule';
+  name: string;
+  description: string;
+  id: string;
+  trigger?: TriggerScript[];
+}
+
+export interface ConvertResult {
+  preset: RisuPreset;
+  module: RisuModule | null;
+  report: Report;
 }

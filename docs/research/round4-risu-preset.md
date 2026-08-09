@@ -176,7 +176,7 @@ interface PromptItemCache { type: 'cache'; name: string; depth: number; role: 'u
   - 旧版分支:`index.svelte.ts:1463-1468` `else{ for(... formatOrder) { pushPrompts(unformated[formatOrder[i]]) } }`
   - 模板缺失时会自动补一张 `postEverything` 卡:`index.svelte.ts:364-378`。
 - 每类卡在 `index.svelte.ts:688-819` 的 `switch(card.type)` 中分别处理。
-- 模板合法性校验 `templateCheck()`(`src/ts/process/templates/templateCheck.ts:3-81`):要求恰好 1 个 `type2==='main'`、1 个 `type2==='globalNote'`、有 description、lorebook、以及一个 `rangeEnd==='end'` 的 chat 卡。
+- 模板合法性校验 `templateCheck()`(`src/ts/process/templates/templateCheck.ts:3-81`):要求恰好 1 个 `type2==='main'`、1 个 `type2==='globalNote'`、有 description、lorebook、以及一个 `rangeEnd==='end'` **且 `rangeStart !== -1000`** 的 chat 卡(`rangeStart === -1000` 的 chat 卡整块跳过,不计入 reachEnd);另有"范围必须连通"警告(start/end 区间需一一配对)。唯一调用点 `PromptSettings.svelte:44`,纯 UI 软警告,不阻止导入。
 
 ---
 

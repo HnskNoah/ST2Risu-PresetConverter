@@ -1,8 +1,9 @@
 import { normalizeRole } from './ir.js';
-import type { ParsedIR, Report, RisuPromptCard } from './types.js';
+import type { ExtractedSetVar, ParsedIR, Report, RisuPromptCard } from './types.js';
 import { translateMacros } from './macroTable.js';
+import { extractSetVars } from './mapTriggers.js';
 
-export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
+export function mapPrompts(ir: ParsedIR, report: Report): { cards: RisuPromptCard[]; setvars: ExtractedSetVar[] } {
   const { prompts, promptOrder, formats } = ir;
   const order = promptOrder[0]?.order ?? [];
   const byId = new Map(prompts.map((p) => [p.identifier, p]));
@@ -16,7 +17,18 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
     : null;
 
   for (const item of order) {
-    if (!item || item.enabled === false) continue;
+    if (!item) continue;
+    if (item.enabled === false) {
+      const dp = item.identifier ? byId.get(item.identifier) : undefined;
+      report.add('prompts', {
+        identifier: item.identifier,
+        name: dp?.name,
+        action: 'dropped',
+        fields: ['enabled'],
+        reason: 'disabled prompt(ST 开关关闭);Risu prompt 卡无 enabled 开关,官方导入器同样跳过,故不生成卡',
+      });
+      continue;
+    }
     const p = byId.get(item.identifier);
     if (!p) {
       report.add('prompts', {
@@ -28,23 +40,25 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
     }
     const text = (p.content ?? '').trim();
     const scenarioFormat = formats.scenarioFormat;
+    const withName = (card: RisuPromptCard): RisuPromptCard => (p.name ? { ...card, name: p.name } : card);
     switch (item.identifier) {
       case 'main':
         hasMain = true;
-        cards.push({ type: 'plain', type2: 'main', text: text || '\n', role: normalizeRole(p.role) });
+        cards.push(withName({ type: 'plain', type2: 'main', text: text || '\n', role: normalizeRole(p.role) }));
         break;
       case 'jailbreak':
       case 'nsfw':
-        cards.push({ type: 'jailbreak', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) });
+        cards.push(withName({ type: 'jailbreak', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
         break;
       case 'chatHistory':
-        cards.push({ type: 'chat', rangeStart: 0, rangeEnd: 'end' });
+        cards.push(withName({ type: 'chat', rangeStart: 0, rangeEnd: 'end' }));
         break;
       case 'worldInfoBefore':
-        cards.push({ type: 'lorebook' });
+        cards.push(withName({ type: 'lorebook' }));
         break;
       case 'charDescription': {
         if (!descriptionCard) descriptionCard = { type: 'description' };
+        if (p.name && !descriptionCard.name) descriptionCard.name = p.name;
         // 标准内容 {{description}} 等价 Risu {{slot}},直接丢弃;自定义内容保留在 innerFormat 前缀
         if (text && text !== '{{description}}') {
           const existing = typeof descriptionCard.innerFormat === 'string' ? descriptionCard.innerFormat : '';
@@ -59,7 +73,7 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
         break;
       }
       case 'personaDescription':
-        cards.push({ type: 'persona', innerFormat: formats.personalityFormat ?? '{{slot}}' });
+        cards.push(withName({ type: 'persona', innerFormat: formats.personalityFormat ?? '{{slot}}' }));
         break;
       case 'scenario': {
         // decision 2026-08-09: 并入 description 卡 innerFormat(经 scenario_format 包装,官方漏转字段)
@@ -71,7 +85,7 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
             : '';
           descriptionCard.innerFormat = existing ? `${existing}\n${content}\n{{slot}}` : `${content}\n{{slot}}`;
         } else {
-          cards.push({ type: 'plain', type2: 'normal', text: content || '', role: 'system' });
+          cards.push(withName({ type: 'plain', type2: 'normal', text: content || '', role: 'system' }));
         }
         report.add('prompts', {
           identifier: 'scenario',
@@ -82,7 +96,7 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
       }
       case 'charPersonality':
       case 'dialogueExamples':
-        cards.push({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) });
+        cards.push(withName({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
         report.add('prompts', {
           identifier: item.identifier,
           action: 'degraded',
@@ -90,7 +104,7 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
         });
         break;
       case 'worldInfoAfter':
-        tail.push({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) });
+        tail.push(withName({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
         report.add('prompts', {
           identifier: 'worldInfoAfter',
           action: 'degraded',
@@ -98,7 +112,7 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
         });
         break;
       case 'enhanceDefinitions':
-        cards.push({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) });
+        cards.push(withName({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
         report.add('prompts', {
           identifier: 'enhanceDefinitions',
           action: 'degraded',
@@ -106,11 +120,35 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
         });
         break;
       default:
-        cards.push({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) });
+        cards.push(withName({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
     }
   }
 
   cards.push(...tail);
+
+  // round7 复验:templateCheck(templateCheck.ts)要求恰好 1 张 type2==='globalNote' 卡,否则导入
+  // 报 "No global notes entry found" 警告。ST 无全局笔记槽位,Risu 生态惯例是带一张空卡(可编辑),
+  // 故补一张空 globalNote 卡,消除警告并符合惯例。
+  if (!cards.some((c) => c.type2 === 'globalNote')) {
+    cards.push({ type: 'plain', type2: 'globalNote', text: '', role: 'system', name: '全局笔记' });
+  }
+
+  // 触发器提取:从卡文本剔除 setvar 宏并收集(round9 修正:setvar 在 prompt 卡内 runVar=false 不执行,
+  // 必须转成 start 触发器 effect;剔除文本避免字面量残留)。须在 M3 宏翻译之前,否则 translateMacros
+  // 会对 setvar 报 manual。
+  const setvars: ExtractedSetVar[] = [];
+  for (const c of cards) {
+    if (typeof c.text === 'string') {
+      const r = extractSetVars(c.text, report);
+      c.text = r.text;
+      setvars.push(...r.setvars);
+    }
+    if (typeof c.innerFormat === 'string') {
+      const r = extractSetVars(c.innerFormat, report);
+      c.innerFormat = r.text;
+      setvars.push(...r.setvars);
+    }
+  }
 
   // M3: 宏翻译(每张卡的 text / innerFormat)
   for (const c of cards) {
@@ -157,5 +195,5 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
     });
   }
 
-  return cards;
+  return { cards, setvars };
 }

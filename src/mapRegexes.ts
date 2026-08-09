@@ -35,12 +35,7 @@ function parseFindRegex(findRegex: unknown): { pattern: string; tailFlags: strin
 
 // 决策树:返回目标 type 列表;null 表示整脚本被丢弃。
 function decideTypes(s: RegexScript, name: string, report: Report): string[] | null {
-  if (s.disabled) {
-    report.add('regex', {
-      scriptName: name, action: 'dropped', reason: 'disabled 脚本', fields: ['disabled'],
-    });
-    return null;
-  }
+  if (s.disabled) return ['disabled'];
 
   const placement = normalizePlacement(s.placement);
   let usable = false;
@@ -173,6 +168,20 @@ function buildScript(s: RegexScript, name: string, type: string, order: number, 
   };
 }
 
+// disabled 脚本 -> Risu type=disabled:保留内容但永不执行(mode 过滤永不匹配 'disabled'),
+// 用户在 Risu 中可重新启用。不做宏翻译/深度守卫(不执行,无意义)。
+function buildDisabled(s: RegexScript, name: string): RisuCustomScript {
+  const { pattern } = parseFindRegex(s.findRegex);
+  return {
+    type: 'disabled',
+    ableFlag: true,
+    flag: 'g',
+    in: pattern,
+    out: isEmpty(s.replaceString) ? '' : String(s.replaceString),
+    comment: `[${name}]`,
+  };
+}
+
 export function mapRegexes(scripts: RegexScript[], report: Report): RisuCustomScript[] {
   const out: RisuCustomScript[] = [];
   const total = scripts.length;
@@ -193,6 +202,14 @@ export function mapRegexes(scripts: RegexScript[], report: Report): RisuCustomSc
     // 降序 order:Tavern 先执行的脚本获得更大 order(Risu 按 order 降序执行)
     const order = total - index;
     for (const type of types) {
+      if (type === 'disabled') {
+        out.push(buildDisabled(s, name));
+        report.add('regex', {
+          scriptName: name, type: 'disabled', action: 'converted',
+          reason: 'disabled 脚本 -> Risu type=disabled(内容保留,永不执行;可在 Risu 中重新启用)',
+        });
+        continue;
+      }
       const script = buildScript(s, name, type, order, report);
       if (types.length > 1) script.comment = `[${name} (${type})]`;
       out.push(script);

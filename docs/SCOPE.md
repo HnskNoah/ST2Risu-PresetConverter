@@ -10,7 +10,7 @@
 | 1 | 采样参数 + 上下文/输出长度 | ✅ 已实现 | temperature/penalty/top_p/k/a/min_p/rep_penalty/maxContext/maxResponse |
 | 2 | prompts + prompt_order → promptTemplate | ✅ 基础版 | 任意 identifier(含 UUID 自定义块)降级 plain 卡,保真文本/角色/顺序/启用态 |
 | 3 | 正则脚本 → customscript | ✅ M2 已实现 | 13 字段决策树 |
-| 4 | 宏翻译 | ✅ M3 已实现 | A 直通/B 同名不同义/C 翻译/D 未知透传(`macroTable.ts`);`{{setglobalvar}}`→manual(Risu 无此宏) |
+| 4 | 宏翻译 | ✅ M3 已实现 | A 直通/B 同名不同义/C 翻译/D 未知透传(`macroTable.ts`);`{{setglobalvar}}`→manual(Risu 无此宏);`{{setvar}}/{{addvar}}/{{setdefaultvar}}`→manual(round9:Risu 中仅 `runVar=true` 执行,卡内不生效,提示触发器/`customPromptTemplateToggle` 迁移) |
 | 5 | 正则深度过滤 | ✅ M3 已实现 | minDepth/maxDepth → OUT `{{#if}}` 守卫 + `<cbs>` + in 吞换行(round5 §7);`{{chatindex}}=-1` 边界报 degraded |
 
 ## 二、待决策(需要拍板方向)
@@ -26,10 +26,10 @@
 
 | 部分 | 处理 | 状态 |
 |---|---|---|
-| 平台开关:stream_openai / seed / n / max_context_unlocked / squash_system_messages / names_behavior / wrap_in_quotes / image_inlining / video_inlining / inline_image_quality / claude_use_sysprompt / use_makersuite_sysprompt / function_calling / enable_web_search / request_images | dropped | ✅ 已实现(mapFields DROPPED_NO_EQUIVALENT) |
+| 平台开关:stream_openai / seed / n / max_context_unlocked / squash_system_messages / names_behavior / wrap_in_quotes / image_inlining / video_inlining / inline_image_quality / use_sysprompt / function_calling / enable_web_search / request_images | dropped | ✅ 已实现(mapFields DROPPED_NO_EQUIVALENT) |
 | 插件扩展:extensions.SPreset / extensions.tavern_helper | manual | ✅ 已实现(mapFields 遍历 extensions 子键) |
 | 正则脚本 id(内部 UUID) | dropped(单条汇总) | ✅ 已实现(mapRegexes) |
-| bias_preset_selected | dropped | ✅ 已实现 |
+| bias_preset_selected | manual(未提供 ST 全局 bias_presets) | ✅ 已实现 |
 | 连接字段:apiType / aiModel(若存在) | manual(Risu 默认连接设置) | ✅ 已实现 |
 
 **补充实现细节(2026-08-09):**

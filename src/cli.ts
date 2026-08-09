@@ -19,8 +19,9 @@ try {
 
 let preset: ReturnType<typeof convert>['preset'];
 let report: ReturnType<typeof convert>['report'];
+let module: ReturnType<typeof convert>['module'];
 try {
-  ({ preset, report } = convert(JSON.parse(raw), { source: basename(inputPath) }));
+  ({ preset, report, module } = convert(JSON.parse(raw), { source: basename(inputPath) }));
 } catch (err) {
   console.error(`convert failed: ${(err as Error).message}`);
   process.exit(1);
@@ -29,4 +30,7 @@ try {
 const base = inputPath.replace(/\.json$/i, '');
 writeFileSync(`${base}.risu.json`, JSON.stringify(preset, null, 2));
 writeFileSync(`${base}.report.json`, JSON.stringify(report, null, 2));
-console.log(`written ${base}.risu.json + ${base}.report.json`);
+if (module) {
+  writeFileSync(`${base}.module.json`, JSON.stringify(module, null, 2));
+}
+console.log(`written ${base}.risu.json + ${base}.report.json${module ? ` + ${base}.module.json` : ''}`);

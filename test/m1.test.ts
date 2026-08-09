@@ -35,6 +35,53 @@ test('normalizeRole maps assistant/char -> bot', () => {
   assert.equal(normalizeRole(undefined), 'system');
 });
 
+test('mapPrompts passes ST prompt name through to cards', () => {
+  const report = createReport('t');
+  const { cards } = mapPrompts(parseST(fixture), report);
+  assert.equal((cards.find((c) => c.type2 === 'main') as any).name, 'Main');
+  assert.equal((cards.find((c) => c.type === 'chat') as any).name, 'Chat History');
+  assert.equal((cards.find((c) => c.text === '{{personality}}') as any).name, 'Personality');
+  assert.equal((cards.find((c) => c.type === 'description') as any).name, 'Description');
+  // templateCheck 要求恰好 1 张 globalNote 卡(mapPrompts 自动补空卡)
+  const gn = cards.filter((c) => c.type2 === 'globalNote');
+  assert.equal(gn.length, 1);
+  assert.equal(gn[0].type, 'plain');
+  assert.equal(gn[0].text, '');
+});
+
+test('mapPrompts extracts setvar macros into triggers and strips them from card text', () => {
+  const report = createReport('t');
+  const ir = parseST({
+    ...fixture,
+    prompts: [
+      ...(fixture.prompts ?? []),
+      { identifier: 'init', name: 'Init', role: 'system', content: '{{setvar::foo::1}}{{setvar::bar::x}}' },
+    ],
+    prompt_order: [
+      {
+        character_id: 100001,
+        order: [{ identifier: 'init', enabled: true }, ...(fixture.prompt_order?.[0]?.order ?? [])],
+      },
+    ],
+  });
+  const { cards, setvars } = mapPrompts(ir, report);
+  const card = cards.find((c) => c.type === 'plain' && c.name === 'Init');
+  assert.ok(card);
+  assert.equal(String(card.text).includes('{{setvar::'), false);
+  assert.equal(setvars.length, 2);
+  assert.deepEqual(
+    setvars.map((s) => ({ name: s.name, operator: s.operator, value: s.value })),
+    [
+      { name: 'foo', operator: '=', value: '1' },
+      { name: 'bar', operator: '=', value: 'x' },
+    ],
+  );
+  const entry = report.sections.macros.find((e) => e.action === 'converted' && e.reason?.includes('setvar'));
+  assert.ok(entry);
+  assert.match(entry.reason as string, /foo/);
+  assert.match(entry.reason as string, /bar/);
+});
+
 test('mapFields converts samplers with x100 and drops unsupported', () => {
   const report = createReport('t');
   const out = mapFields(fixture, report);
@@ -51,7 +98,10 @@ test('mapFields converts samplers with x100 and drops unsupported', () => {
   const droppedFields = dropped.map((e) => e.field as string);
   assert.ok(droppedFields.includes('seed'));
   assert.ok(droppedFields.includes('stream_openai'));
-  assert.ok(droppedFields.includes('bias_preset_selected'));
+
+  const biasEntry = report.sections.topLevel.find((e) => e.field === 'bias_preset_selected');
+  assert.ok(biasEntry);
+  assert.equal(biasEntry.action, 'manual');
 });
 
 test('mapFields presence_penalty missing -> 0 (decision)', () => {
@@ -64,7 +114,7 @@ test('mapFields presence_penalty missing -> 0 (decision)', () => {
 test('mapPrompts applies identifier mapping and decisions', () => {
   const report = createReport('t');
   const ir = parseST(fixture);
-  const cards = mapPrompts(ir, report);
+  const { cards } = mapPrompts(ir, report);
 
   const main = cards.find((c) => c.type2 === 'main');
   assert.ok(main);
@@ -104,11 +154,14 @@ test('mapPrompts applies identifier mapping and decisions', () => {
   assert.ok(degraded.includes('worldInfoAfter'));
 });
 
-test('disabled prompts are skipped', () => {
+test('disabled prompts are skipped and reported as dropped', () => {
   const report = createReport('t');
   const ir = parseST(fixture);
-  const cards = mapPrompts(ir, report);
+  const { cards } = mapPrompts(ir, report);
   assert.ok(!cards.some((c) => c.text === 'be nice')); // jailbreak disabled
+  const dropped = report.sections.prompts.filter((e) => e.action === 'dropped' && e.identifier === 'jailbreak');
+  assert.equal(dropped.length, 1);
+  assert.ok(dropped[0].fields?.includes('enabled'));
 });
 
 test('mapFields reports behavior strings / reasoning params / platform switches', () => {
@@ -117,7 +170,6 @@ test('mapFields reports behavior strings / reasoning params / platform switches'
     ...fixture,
     impersonation_prompt: 'reply as {{char}}',
     continue_prefill: true,
-    reasoning_effort: 'auto',
     show_thoughts: true,
     wrap_in_quotes: true,
     image_inlining: true,
@@ -128,13 +180,34 @@ test('mapFields reports behavior strings / reasoning params / platform switches'
   const manualFields = report.sections.topLevel.filter((e) => e.action === 'manual').map((e) => e.field as string);
   assert.ok(manualFields.includes('impersonation_prompt'));
   assert.ok(manualFields.includes('continue_prefill'));
-  assert.ok(manualFields.includes('reasoning_effort'));
   assert.ok(manualFields.includes('show_thoughts'));
 
   const droppedFields = report.sections.topLevel.filter((e) => e.action === 'dropped').map((e) => e.field as string);
   assert.ok(droppedFields.includes('wrap_in_quotes'));
   assert.ok(droppedFields.includes('image_inlining'));
   assert.ok(droppedFields.includes('function_calling'));
+});
+
+test('mapFields maps reasoning_effort low/medium/high -> reasonEffort 0/1/2', () => {
+  for (const [st, risu] of [
+    ['low', 0],
+    ['medium', 1],
+    ['high', 2],
+    ['HIGH', 2],
+    [2, 2],
+  ] as const) {
+    const report = createReport('t');
+    const out = mapFields({ ...fixture, reasoning_effort: st } as any, report);
+    assert.equal(out.reasonEffort, risu, `reasoning_effort=${st}`);
+    assert.ok(report.sections.topLevel.some((e) => e.action === 'converted' && e.field === 'reasoning_effort'));
+  }
+});
+
+test('mapFields reasoning_effort auto -> manual,不写入', () => {
+  const report = createReport('t');
+  const out = mapFields({ ...fixture, reasoning_effort: 'auto' } as any, report);
+  assert.ok(!('reasonEffort' in out));
+  assert.ok(report.sections.topLevel.some((e) => e.action === 'manual' && e.field === 'reasoning_effort'));
 });
 
 test('mapFields reports extensions plugin sub-keys (except regex_scripts)', () => {
@@ -172,7 +245,7 @@ test('mapPrompts preserves custom charDescription content before scenario merge'
       },
     ],
   });
-  const cards = mapPrompts(ir, report);
+  const { cards } = mapPrompts(ir, report);
   const description = cards.find((c) => c.type === 'description');
   assert.ok(description);
   const fmt = description.innerFormat as string;
@@ -212,7 +285,7 @@ function reorderFixture(scenarioFirst: boolean): TavernPreset {
 
 test('scenario 在 charDescription 之前时仍并入 description 卡(顺序无关)', () => {
   const report = createReport('t');
-  const cards = mapPrompts(parseST(reorderFixture(true)), report);
+  const { cards } = mapPrompts(parseST(reorderFixture(true)), report);
   const descCards = cards.filter((c) => c.type === 'description');
   assert.equal(descCards.length, 1);
   assert.match(descCards[0].innerFormat as string, /\{\{scenario\}\}/);
@@ -223,7 +296,7 @@ test('scenario 在 charDescription 之前时仍并入 description 卡(顺序无�
 test('scenario_format 驱动 description 卡 innerFormat', () => {
   const report = createReport('t');
   const withFormat: TavernPreset = { ...fixture, scenario_format: 'System note: {{scenario}}' };
-  const cards = mapPrompts(parseST(withFormat), report);
+  const { cards } = mapPrompts(parseST(withFormat), report);
   const desc = cards.find((c) => c.type === 'description')!;
   assert.ok(desc);
   assert.match(desc.innerFormat as string, /System note: \{\{scenario\}\}/);

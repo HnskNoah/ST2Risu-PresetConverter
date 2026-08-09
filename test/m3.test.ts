@@ -96,7 +96,7 @@ test('mapRegexes: minDepth=0/maxDepth=null(无过滤)不触发深度分支', () 
 
 test('macros A 直通: 不变且不报告', () => {
   const report = createReport('t');
-  const text = '{{char}} {{user}} {{setvar::Erde:: }} {{getvar::X}} {{//注}}';
+  const text = '{{char}} {{user}} {{getvar::X}} {{//注}}';
   assert.equal(translateMacros(text, report), text);
   assert.equal(report.sections.macros.length, 0);
 });
@@ -104,13 +104,24 @@ test('macros A 直通: 不变且不报告', () => {
 test('macros C 改写: 无参', () => {
   const report = createReport('t');
   const out = translateMacros(
-    '{{charPrompt}}|{{charInstruction}}|{{mesExamplesRaw}}|{{weekday}}|{{incvar}}|{{decvar}}|{{newline}}|{{noop}}',
+    '{{charPrompt}}|{{charInstruction}}|{{mesExamplesRaw}}|{{weekday}}|{{newline}}|{{noop}}',
     report,
   );
   assert.equal(
     out,
-    '{{mainprompt}}|{{jb}}|{{exampledialogue}}|{{date::dddd}}|{{addvar::n::1}}|{{addvar::n::-1}}|{{br}}|{{blank}}',
+    '{{mainprompt}}|{{jb}}|{{exampledialogue}}|{{date::dddd}}|{{br}}|{{blank}}',
   );
+  assert.ok(report.sections.macros.every((e) => e.action === 'rewritten'));
+});
+
+test('macros C 角色字段 char- 前缀与别名直通', () => {
+  const report = createReport('t');
+  // charDescription/charPersonality/charScenario -> 无前缀宏
+  assert.equal(translateMacros('{{charDescription}} {{charPersonality}} {{charScenario}}', report), '{{description}} {{personality}} {{scenario}}');
+  // isMobile -> metadata::mobile;maxPrompt -> maxcontext
+  assert.equal(translateMacros('{{isMobile}} {{maxPrompt}}', report), '{{metadata::mobile}} {{maxcontext}}');
+  // ST 名恰好是 Risu 别名 -> 直通不报告(保留原文,规范化由 Risu parser 处理)
+  assert.equal(translateMacros('{{lastUserMessage}} {{systemPrompt}}', report), '{{lastUserMessage}} {{systemPrompt}}');
   assert.ok(report.sections.macros.every((e) => e.action === 'rewritten'));
 });
 
@@ -130,7 +141,7 @@ test('macros random 空格语法 -> :: 形式;带参 :: 直通不报', () => {
 test('mapPrompts: prefill 卡 innerFormat 也过宏翻译', () => {
   const report = createReport('t');
   const ir = parseST({ ...fixture, assistant_prefill: 'continue {{charPrompt}} {{newline}}' });
-  const cards = mapPrompts(ir, report);
+  const { cards } = mapPrompts(ir, report);
   const post = cards.find((c) => c.type === 'postEverything');
   assert.ok(post);
   const fmt = post.innerFormat as string;
@@ -159,9 +170,28 @@ test('macros 控制结构跳过: {{#if}}/{{/if}}/{{//}} 不动不报', () => {
   assert.equal(report.sections.macros.length, 0);
 });
 
-test('macros 嵌套 {{setvar::X::{{char}}}} 原样', () => {
+test('macros 嵌套 {{setvar::X::{{char}}}} 仅解析内层(外层含花括号不被识别为宏)', () => {
+  const report = createReport('t');
   const text = '{{setvar::X::{{char}}}}';
-  assert.equal(translateMacros(text, createReport('t')), text);
+  assert.equal(translateMacros(text, report), text);
+  assert.equal(report.sections.macros.length, 0); // 内层 {{char}} 为 A 直通,不产生报告
+});
+
+test('macros setvar/addvar 归 manual(仅 runVar 执行)', () => {
+  const report = createReport('t');
+  const text = '{{setvar::foo::1}} {{addvar::bar::2}}';
+  assert.equal(translateMacros(text, report), text);
+  const manuals = report.sections.macros.filter((e) => e.action === 'manual');
+  assert.equal(manuals.length, 2);
+  assert.ok(manuals.every((e) => /runVar/.test(e.reason)));
+});
+
+test('macros incvar/decvar -> manual(Risu 无此宏,prompt 卡内不执行)', () => {
+  const report = createReport('t');
+  assert.equal(translateMacros('{{incvar::X}} {{decvar::X}}', report), '{{incvar::X}} {{decvar::X}}');
+  const manuals = report.sections.macros.filter((e) => e.action === 'manual');
+  assert.equal(manuals.length, 2);
+  assert.ok(manuals.every((e) => /Risu 无 incvar 宏/.test(e.reason) || /Risu 无 decvar 宏/.test(e.reason)));
 });
 
 test('macros {{data}} 直通不报(深度/匹配宏)', () => {
@@ -203,7 +233,7 @@ test('mapPrompts: 卡文本宏翻译({{charInstruction}} -> {{jb}}, {{newline}} 
     ],
     prompt_order: [{ character_id: 100001, order: [{ identifier: 'main', enabled: true }] }],
   });
-  const cards = mapPrompts(ir, report);
+  const { cards } = mapPrompts(ir, report);
   const main = cards.find((c) => c.type2 === 'main');
   assert.ok(main);
   assert.equal(main.text, '{{jb}} Hi {{br}} {{char}}');
@@ -214,6 +244,8 @@ test('mapPrompts: 深度守卫自生成宏(A 类)不产生 macros 报告', () =>
   const ir = parseST({
     ...fixture,
     assistant_prefill: 'continue {{data}}',
+    // 清空 worldInfoAfter 占位({{wiAfter}} 非 ST 真实宏,避免干扰"自生成宏不报告"断言)
+    prompts: (fixture.prompts ?? []).map((p) => (p.identifier === 'worldInfoAfter' ? { ...p, content: '' } : p)),
   });
   mapPrompts(ir, report);
   assert.equal(report.sections.macros.length, 0);
