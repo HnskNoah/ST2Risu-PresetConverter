@@ -203,6 +203,42 @@ test('mapFields maps reasoning_effort low/medium/high -> reasonEffort 0/1/2', ()
   }
 });
 
+test('mapFields: continue_postfix -> promptSettings.postEndInnerFormat(degraded)', () => {
+  const report = createReport('t');
+  const out = mapFields({ ...fixture, continue_postfix: ' [end] ' } as any, report);
+  assert.equal(out.promptSettings?.postEndInnerFormat, ' [end] ');
+  const e = report.sections.topLevel.find((x) => x.field === 'continue_postfix');
+  assert.ok(e);
+  assert.equal(e.action, 'degraded');
+  assert.match(e.reason as string, /postEndInnerFormat/);
+});
+
+test('mapFields: continue_nudge/impersonation/continue_prefill 有值 manual 带语义理由;空行为字段不报噪音', () => {
+  const report = createReport('t');
+  const out = mapFields(
+    {
+      ...fixture,
+      impersonation_prompt: 'you are {{user}}',
+      continue_nudge_prompt: 'continue here',
+      continue_prefill: true,
+      new_chat_prompt: '', // 空值应忽略
+      send_if_empty: '', // 空值应忽略
+    } as any,
+    report,
+  );
+  const manual = report.sections.topLevel.filter((e) => e.action === 'manual').map((e) => e.field as string);
+  assert.ok(manual.includes('impersonation_prompt'));
+  assert.ok(manual.includes('continue_nudge_prompt'));
+  assert.ok(manual.includes('continue_prefill'));
+  // 空值字段不产生报告
+  assert.ok(!manual.includes('new_chat_prompt'));
+  assert.ok(!manual.includes('send_if_empty'));
+  // manual 理由不再是笼统待调研
+  const nudge = report.sections.topLevel.find((e) => e.field === 'continue_nudge_prompt');
+  assert.ok(!(nudge?.reason as string).includes('待调研'));
+  assert.ok(out.promptSettings === undefined);
+});
+
 test('mapFields reasoning_effort auto -> manual,不写入', () => {
   const report = createReport('t');
   const out = mapFields({ ...fixture, reasoning_effort: 'auto' } as any, report);

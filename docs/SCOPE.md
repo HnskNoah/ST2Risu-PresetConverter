@@ -20,7 +20,7 @@
 | # | 部分 | 现状问题 |
 |---|---|---|
 | 8 | **prompt_order 多角色** | ~~ST 可含多条 prompt_order(按 character_id);Risu 是单模板。~~ **已决(2026-08-09):只转换 `prompt_order[0]`,其余不管**。真实预设(此间小镇)仅 1 条,多角色场景不投入。 |
-| 9 | **顶层行为字符串** | **已决(2026-08-09):v1 报告 manual,不转换**。`impersonation_prompt / new_chat_prompt / new_group_chat_prompt / new_example_chat_prompt / continue_nudge_prompt / group_nudge_prompt / continue_postfix / continue_prefill / send_if_empty / assistant_impersonation` → mapFields 逐项 manual 报告。 |
+| 9 | **顶层行为字符串** | **已决(2026-08-09 调研定稿)**。Risu 这些提示词全部硬编码、无 botPreset 字段:① `continue_postfix` → `promptSettings.postEndInnerFormat`(degraded:每次生成追加,非仅续写);② `assistant_prefill` → 官方 stChatConvert 同款 postEverything 卡 + `{{#if {{prefill_supported}}}}`(mapPrompts 已实现);③ `continue_nudge_prompt`/`impersonation_prompt`/`continue_prefill` 有值时 manual(带具体语义理由:续写提示硬编码、无非真名检测、无 prefill 字段);④ `new_chat_prompt`/`new_group_chat_prompt`/`new_example_chat_prompt`/`group_nudge_prompt`/`send_if_empty` 空值忽略不报噪音。 |
 | 10 | **思考参数** | **已决(2026-08-09):v1 报告 manual,不转换**。`reasoning_effort / show_thoughts` → mapFields manual 报告,待调研 Risu 思考参数映射。 |
 | 11 | **格式模板** | `wi_format / scenario_format / personality_format` → scenario_format 已用于 description 卡 innerFormat;`wi_format` 未消费 → manual 报告。 |
 

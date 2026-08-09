@@ -25,16 +25,24 @@ const DROPPED_NO_EQUIVALENT = [
   'request_images',
 ] as const;
 
-// 顶层行为字符串:v1 报告 manual,待调研 Risu 对应模板(continue/impersonation)后转
+// 顶层行为字符串:Risu 均为硬编码注入,无 botPreset 字段。
+// 决策(2026-08-09):continue_postfix 有近似等价(promptSettings.postEndInnerFormat,每次生成追加非仅续写 → degraded);
+// assistant_prefill 仿官方 stChatConvert 转 postEverything 卡;
+// continue_nudge_prompt/impersonation_prompt 语义无等价,有值时 manual 保留并说明;
+// continue_prefill 有值时 manual 保留(Risu 续写自动用上一条内容作 prefix,无 prefill 文本字段);
+// 其余(new_chat/new_group_chat/new_example_chat/group_nudge/send_if_empty)为空值即忽略,不产生噪音。
+const BEHAVIOR_CONVERT_POSTFIX = 'continue_postfix' as const;
 const BEHAVIOR_MANUAL = [
   'impersonation_prompt',
+  'continue_nudge_prompt',
+  'continue_prefill',
+] as const;
+// 空值即忽略、不报告的行为字段(ST 中默认多为空;有值才报 manual)
+const BEHAVIOR_SILENT_IGNORE = [
   'new_chat_prompt',
   'new_group_chat_prompt',
   'new_example_chat_prompt',
-  'continue_nudge_prompt',
   'group_nudge_prompt',
-  'continue_postfix',
-  'continue_prefill',
   'send_if_empty',
 ] as const;
 
@@ -53,6 +61,8 @@ const REASONING_EFFORT_MAP: Record<string, number> = {
 const CONSUMED_OR_REPORTED = new Set<string>([
   ...DROPPED_NO_EQUIVALENT,
   ...BEHAVIOR_MANUAL,
+  ...BEHAVIOR_SILENT_IGNORE,
+  BEHAVIOR_CONVERT_POSTFIX,
   ...REASONING_MANUAL,
   'bias_preset_selected',
   'apiType',
@@ -128,16 +138,29 @@ export function mapFields(top: TavernPreset, report: Report): MapFieldsResult {
     });
   }
 
-  // 顶层行为字符串:v1 报告 manual(SCOPE 决策)
+  // 顶层行为字符串(2026-08-09 调研定稿):
+  // continue_postfix → promptSettings.postEndInnerFormat(每次生成追加,非仅续写 → degraded)
+  if (hasValue(top[BEHAVIOR_CONVERT_POSTFIX])) {
+    out.promptSettings = { postEndInnerFormat: String(top[BEHAVIOR_CONVERT_POSTFIX]) };
+    report.add('topLevel', {
+      field: BEHAVIOR_CONVERT_POSTFIX,
+      action: 'degraded',
+      reason: 'Risu promptSettings.postEndInnerFormat 每次生成都追加(prompt.ts:11),ST 仅续写时追加;近似承载',
+    });
+  }
+  // continue_nudge_prompt / impersonation_prompt / continue_prefill:语义无等价,有值时 manual 保留
   for (const field of BEHAVIOR_MANUAL) {
     if (hasValue(top[field])) {
-      report.add('topLevel', {
-        field,
-        action: 'manual',
-        reason: 'v1 未映射,待调研 Risu 对应模板(continue/impersonation)',
-      });
+      const reason =
+        field === 'continue_nudge_prompt'
+          ? 'Risu 续写提示硬编码 [Continue the last response](index.svelte.ts:1227),无 botPreset 字段;自定义续写提示不生效'
+          : field === 'impersonation_prompt'
+            ? 'Risu 无"以非真名发送"检测(用户名恒为 getUserName),systemprompt trigger 会无条件注入,无法只在冒充时注入'
+            : 'Risu 续写自动用上一条 assistant 内容作 prefix,无 prefill 文本字段(assistantPrefill 为未启用休眠字段)';
+      report.add('topLevel', { field, action: 'manual', reason });
     }
   }
+  // 空值行为字段:默认即空,忽略不报告(避免噪音)
 
   // 思考参数:show_thoughts v1 报告 manual(SCOPE 决策)
   for (const field of REASONING_MANUAL) {
