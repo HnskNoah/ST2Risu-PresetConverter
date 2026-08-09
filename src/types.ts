@@ -69,9 +69,11 @@ export interface ParsedIR {
 }
 
 export type ReportAction = 'converted' | 'dropped' | 'degraded' | 'manual';
+// macros 区专用动作(kept/rewritten/kept-unknown 不进 summary;例外:setglobalvar 报 manual 计入 summary)
+export type MacroAction = 'kept' | 'rewritten' | 'kept-unknown';
 
 export interface ReportEntry {
-  action: ReportAction;
+  action: ReportAction | MacroAction;
   reason: string;
   fields?: string[];
   suggestion?: string;

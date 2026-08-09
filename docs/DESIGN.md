@@ -261,3 +261,6 @@ in 需吞掉尾部换行(如 findRegex 末尾补 [\s\S]*),避免删除后留空�
 | 7 | `{{match}}` → `{{data}}` | 正则 replaceString 中精确 token 翻译(Risu 仅自动映射 `{{data}}`→`$&`) |
 | 8 | 换行语义明确 | replaceString 尾部 `>` → 去掉 + flag `<no_end_nl>`(ST 无换行标记,Risu 等价标签) |
 | 9 | 报告 schema 定稿 | 以 round6-converter-spec §7 为准(嵌套 `sections` + `summary`),§6 已同步 |
+| 10 | **深度过滤实现(M3)** | `minDepth/maxDepth` → OUT `{{#if}}` 守卫(round5 §7):`chatindex ∈ [last-max, last-min]`,`and::GE::LE`(GE 在前),`{{? {{lastmessageid}}-N}}` 算术宏;门控 `min>0 \|\| max≠null`(ST 无过滤序列化 `minDepth:0/maxDepth:null` 不触发);flag 加 `<cbs>`;in 吞尾换行(`[\s\S]*`,剥行尾 `$`,幂等);`{{chatindex}}=-1` 边界报 degraded 不写兜底 |
+| 11 | **宏翻译表实现(M3)** | `macroTable.ts` 四类:A 直通 / B 同名不同义(kept 报告)/ C 翻译(kept→rewritten)/ D 未知(kept-unknown);`{{random a,b}}` 空格语法→`::`;`{{setglobalvar}}` 无 Risu 等价→manual(全局变量仅触发器/UI 可写);应用于卡 text/innerFormat 与正则 out(/需 `<cbs>` 时的 in) |
+| 12 | 宏名规范化 | A 集合存规范化形式(小写+删 `_`/`-`/空格,Risu parser.svelte.ts:1055),`prefill_supported`→`prefillsupported` 才命中 |

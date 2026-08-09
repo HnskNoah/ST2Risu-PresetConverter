@@ -1,6 +1,9 @@
 // M2: ST RegEx(13 字段) -> Risu customscript[] 的通用决策树。
+// M3: 深度过滤(minDepth/maxDepth -> OUT {{#if}}) + 宏翻译。
 // 依据:docs/DESIGN.md §5 与 docs/GOALS.md(通用转换器:全部字段及组合全覆盖)。
 import type { RegexScript, Report, RisuCustomScript } from './types.js';
+import { swallowTrailingNewline, wrapDepthGuard } from './depthGuard.js';
+import { translateMacros } from './macroTable.js';
 
 const PLACEMENT = Object.freeze({
   USER_INPUT: 1,
@@ -102,11 +105,6 @@ function reportGaps(s: RegexScript, name: string, report: Report): void {
       scriptName: name, action: 'degraded', reason: 'Risu 正则恒在编辑时运行,与 runOnEdit=false 不符(行为差异)', fields: ['runOnEdit'],
     });
   }
-  if (!isEmpty(s.minDepth) || !isEmpty(s.maxDepth)) {
-    report.add('regex', {
-      scriptName: name, action: 'degraded', reason: 'minDepth/maxDepth 由 M3 生成深度 OUT 脚本,此处暂不应用', fields: ['minDepth', 'maxDepth'],
-    });
-  }
   if (s.substituteRegex === 2) {
     report.add('regex', {
       scriptName: name, action: 'manual', reason: 'substituteRegex=ESCAPED 需人工核对替换串的特殊字符转义', fields: ['substituteRegex'],
@@ -142,6 +140,26 @@ function buildScript(s: RegexScript, name: string, type: string, order: number, 
   // Tavern 的 {{match}} 全匹配宏,Risu 对应 {{data}};整 token 替换,不触碰 {{match_foo}} 类
   out = out.replace(/\{\{match\}\}/g, '{{data}}');
 
+  let inPattern = pattern;
+
+  // M3: 深度过滤(minDepth/maxDepth -> OUT {{#if}} 守卫,round5 §7)
+  // 门控:仅 min>0 或 max 非空才过滤(ST 的"无过滤"序列化状态是 minDepth:0/maxDepth:null)
+  const minDepth = isEmpty(s.minDepth) ? 0 : Number(s.minDepth);
+  const maxDepth = isEmpty(s.maxDepth) ? null : Number(s.maxDepth);
+  if (minDepth > 0 || maxDepth !== null) {
+    out = wrapDepthGuard(out, minDepth, maxDepth);
+    flags.add('<cbs>'); // OUT 使用宏(chatindex/lastmessageid)的前提
+    inPattern = swallowTrailingNewline(inPattern);
+    report.add('regex', {
+      scriptName: name, action: 'degraded', fields: ['minDepth', 'maxDepth'],
+      reason: `深度过滤经 OUT {{#if}} 实现(min=${minDepth}, max=${maxDepth ?? '∞'});无消息上下文时 {{chatindex}}=-1,条件落假分支(不写兜底,决策 2026-08-09)`,
+    });
+  }
+
+  // M3: 宏翻译(out 总是;in 在需 <cbs> 时,即 substituteRegex=1 或深度过滤)
+  out = translateMacros(out, report, name);
+  if (flags.has('<cbs>')) inPattern = translateMacros(inPattern, report, name);
+
   flags.add(`<order ${order}>`);
 
   const flag = [...flags].join('');
@@ -149,7 +167,7 @@ function buildScript(s: RegexScript, name: string, type: string, order: number, 
     type,
     ableFlag: true, // flag 恒含 <order N>,须保留,Risu 才能按指定顺序执行
     flag,
-    in: pattern,
+    in: inPattern,
     out,
     comment: `[${name}]`,
   };

@@ -1,5 +1,6 @@
 import { normalizeRole } from './ir.js';
 import type { ParsedIR, Report, RisuPromptCard } from './types.js';
+import { translateMacros } from './macroTable.js';
 
 export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
   const { prompts, promptOrder, formats } = ir;
@@ -111,6 +112,12 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
 
   cards.push(...tail);
 
+  // M3: 宏翻译(每张卡的 text / innerFormat)
+  for (const c of cards) {
+    if (typeof c.text === 'string') c.text = translateMacros(c.text, report, `prompt:${c.type}`);
+    if (typeof c.innerFormat === 'string') c.innerFormat = translateMacros(c.innerFormat, report, `prompt:${c.type}`);
+  }
+
   // wi_format 非默认时报告未消费(v1 lorebook 卡不支持 innerFormat)
   const WI_FORMAT_DEFAULT = 'System: {{wi}}';
   const wiFormat = formats.wiFormat;
@@ -125,9 +132,14 @@ export function mapPrompts(ir: ParsedIR, report: Report): RisuPromptCard[] {
   const prefill = ir.topLevel?.assistant_prefill;
   if (prefill) {
     // 官方模板:prefill 内容挂在 postEverything 卡的 innerFormat,不另生 main 卡(模板必须恰一张 type2==='main')
+    const prefillText = translateMacros(
+      `{{#if {{prefill_supported}}}}${prefill}{{/if}}`,
+      report,
+      'prompt:postEverything',
+    );
     cards.push({
       type: 'postEverything',
-      innerFormat: `{{#if {{prefill_supported}}}}${prefill}{{/if}}`,
+      innerFormat: prefillText,
       role2: 'bot',
     });
     report.add('prompts', {
