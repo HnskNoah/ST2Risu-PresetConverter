@@ -73,6 +73,16 @@ export function mapToggles(
   for (const [key, options] of groups) {
     // 全空(纯初始化)不进 toggle
     if (options.length === 0) continue;
+    // round14:单选项组(仅 1 个有效选项,无竞争)不进 toggle —— 单选项 select 无切换意义,
+    // 且会因 filterSetvarsForTrigger 从触发器排除导致变量值丢失;保持触发器路径。
+    if (options.length < 2) {
+      report.add('toggles', {
+        key,
+        action: 'dropped',
+        reason: `变量组仅 ${options.length} 个候选,无开关语义;走触发器 setvar,不进 toggle`,
+      });
+      continue;
+    }
     const label = options.find((o) => o.enabled)?.label ?? options[0].label;
     const defaultIndex = options.findIndex((o) => o.enabled);
     const def: ToggleDef = { key, label, options, defaultIndex: defaultIndex === -1 ? 0 : defaultIndex };

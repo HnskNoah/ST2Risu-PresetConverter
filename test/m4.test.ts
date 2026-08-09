@@ -108,7 +108,7 @@ test('buildModule: 含 trigger 数组与 type/id,无 setvar 时 null', () => {
 
 // ---------- convert 集成 ----------
 
-test('convert: 非空 setvar 卡 -> toggle,空 setvar 卡 -> 触发器模块', () => {
+test('convert: 单候选 setvar 组 -> 触发器(round14),多候选组 -> toggle', () => {
   const presetJson = {
     name: 'with-setvar',
     prompt_order: [
@@ -118,32 +118,40 @@ test('convert: 非空 setvar 卡 -> toggle,空 setvar 卡 -> 触发器模块', (
           { identifier: 'main', enabled: true },
           { identifier: 'init', enabled: true },
           { identifier: 'clean', enabled: true },
+          { identifier: 'tone1', enabled: true },
+          { identifier: 'tone2', enabled: false },
         ],
       },
     ],
     prompts: [
-      { identifier: 'main', name: 'Main', role: 'system', content: 'hello {{getvar::hp}}' },
+      { identifier: 'main', name: 'Main', role: 'system', content: 'hello {{getvar::hp}} {{getvar::tone}}' },
       { identifier: 'init', name: 'Init', role: 'system', content: '{{setvar::hp::100}}{{setvar::gold::50}}' },
       { identifier: 'clean', name: 'Clean', role: 'system', content: '{{setvar::tmp::}}' },
+      { identifier: 'tone1', name: 'Tone Dark', role: 'system', content: '{{setvar::tone::dark}}' },
+      { identifier: 'tone2', name: 'Tone Light', role: 'system', content: '{{setvar::tone::light}}' },
     ],
   } as unknown as TavernPreset;
   const { preset, module, report } = convert(presetJson, { source: 'setvar-test.json' });
-  // 非空 setvar -> toggle
+  // 多候选变量组(tone,2 候选)-> toggle
   assert.ok(preset.customPromptTemplateToggle);
-  assert.match(preset.customPromptTemplateToggle, /^hp=Init=select=/m);
-  assert.match(preset.customPromptTemplateToggle, /gold=Init=select=/m);
-  // 空 setvar -> 触发器
+  assert.match(preset.customPromptTemplateToggle, /^tone=Tone Dark=select=/m);
+  assert.match(preset.customPromptTemplateToggle, /Tone Dark,Tone Light/m);
+  // 单候选组(hp/gold,各 1 候选)不进 toggle,走触发器
+  assert.ok(!/^hp=/.test(preset.customPromptTemplateToggle ?? ''));
+  assert.ok(!/^gold=/.test(preset.customPromptTemplateToggle ?? ''));
+  // 触发器:单候选 + 空初始化变量都由触发器提供
   assert.ok(module);
   const effect = module.trigger?.[0].effect as { type: string; var: string; value: string }[];
-  assert.deepEqual(
-    effect.map((e) => ({ var: e.var, value: e.value })),
-    [{ var: 'tmp', value: '' }],
-  );
-  // 消费点 getvar 改写:main 卡 {{getvar::hp}} -> 分支注入
+  const vars = effect.map((e) => e.var);
+  assert.ok(vars.includes('hp'));
+  assert.ok(vars.includes('gold'));
+  assert.ok(vars.includes('tmp'));
+  assert.ok(!vars.includes('tone'), 'tone 被 toggle 化,从触发器排除');
+  // 消费点:main 卡 {{getvar::tone}} 被改写为分支注入;{{getvar::hp}} 保持原样(由触发器提供)
   const mainCard = preset.promptTemplate.find((c) => (c as { name?: string }).name === 'Main');
   assert.ok(mainCard);
-  assert.match(String(mainCard.text), /getglobalvar::toggle_hp/);
-  assert.ok(!String(mainCard.text).includes('{{getvar::hp}}'));
+  assert.match(String(mainCard.text), /getglobalvar::toggle_tone/);
+  assert.ok(String(mainCard.text).includes('{{getvar::hp}}'));
   // 卡文本已剔除 setvar
   const initCard = preset.promptTemplate.find((c) => (c as { name?: string }).name === 'Init');
   assert.ok(initCard);
