@@ -26,7 +26,7 @@ export interface RegexScript {
   findRegex?: string;
   replaceString?: string;
   trimStrings?: string[];
-  placement?: number[] | string;
+  placement?: (number | string)[] | string;
   markdownOnly?: boolean;
   promptOnly?: boolean;
   runOnEdit?: boolean;

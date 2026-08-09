@@ -2,6 +2,11 @@ import type { MapFieldsResult, Report, TavernPreset } from './types.js';
 
 const num = (v: unknown, scale = 1): number | undefined => {
   if (v === undefined || v === null || v === '') return undefined;
+  // 拒绝数组/布尔/对象:Number([])=0、Number(true)=1、Number('  ')=0 均为宽松强转陷阱,
+  // 会把非法采样器形态当成合法值(通用转换器不得假设 ST 字段恒为合法数字)
+  if (typeof v === 'boolean') return undefined;
+  if (typeof v === 'object') return undefined;
+  if (typeof v === 'string' && v.trim() === '') return undefined;
   const n = Number(v);
   return Number.isNaN(n) ? undefined : n * scale;
 };

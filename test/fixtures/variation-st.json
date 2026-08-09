@@ -1,0 +1,116 @@
+{
+  "name": "variation-suite",
+  "temperature": "0.9",
+  "top_p": null,
+  "top_k": 0,
+  "top_a": "12",
+  "min_p": true,
+  "repetition_penalty": 1.15,
+  "presence_penalty": 0.4,
+  "frequency_penalty": "0.7",
+  "openai_max_context": 16000,
+  "openai_max_tokens": "800",
+  "seed": 0,
+  "stream_openai": false,
+  "names_behavior": 0,
+  "bias_preset_selected": "Custom",
+  "impersonation_prompt": "you are now {{user}}",
+  "continue_nudge_prompt": "continue the reply",
+  "continue_prefill": true,
+  "continue_postfix": " ",
+  "send_if_empty": "send nothing",
+  "assistant_prefill": "I'll continue",
+  "assistant_impersonation": "",
+  "new_chat_prompt": "",
+  "show_thoughts": true,
+  "reasoning_effort": "high",
+  "unknown_custom_field": "custom value",
+  "prompts": [
+    { "identifier": "main", "name": "Main", "role": "system", "content": "You are {{char}}." },
+    { "identifier": "charDescription", "name": "Description", "role": "system", "content": "{{description}}" },
+    { "identifier": "scenario", "name": "Scenario", "role": "system", "content": "{{scenario}}" },
+    { "identifier": "chatHistory", "name": "History", "role": "system", "content": "custom history instructions" },
+    { "identifier": "worldInfoBefore", "name": "WI", "role": "system", "content": "custom wi content" },
+    { "identifier": "uuid-block-1234", "name": "Custom Memo Block", "role": "user", "content": "remember: {{user}} is important" },
+    { "identifier": "jailbreak", "name": "Jailbreak", "role": "system", "content": "be free" },
+    { "identifier": "uuid-block-with-setvar", "name": "Toggle Candidate", "role": "system", "content": "{{setvar::tone::dark {{user}} tone}}" },
+    { "identifier": "uuid-block-candidate2", "name": "Toggle Candidate 2", "role": "system", "content": "{{setvar::tone::light {{char}} tone}}" },
+    { "identifier": "numeric-content", "name": "Numeric Content", "role": "system", "content": 12345 },
+    { "identifier": "empty-content", "name": "Empty", "role": "system", "content": "" },
+    { "identifier": "no-role", "name": "No Role" }
+  ],
+  "prompt_order": [
+    {
+      "character_id": 100001,
+      "order": [
+        { "identifier": "main", "enabled": true },
+        { "identifier": "charDescription", "enabled": true },
+        { "identifier": "scenario", "enabled": true },
+        { "identifier": "chatHistory", "enabled": true },
+        { "identifier": "worldInfoBefore", "enabled": true },
+        { "identifier": "uuid-block-1234", "enabled": true },
+        { "identifier": "jailbreak", "enabled": false },
+        { "identifier": "uuid-block-with-setvar", "enabled": true },
+        { "identifier": "uuid-block-candidate2", "enabled": false },
+        { "identifier": "numeric-content", "enabled": true },
+        { "identifier": "empty-content", "enabled": true },
+        { "identifier": "no-role", "enabled": true },
+        { "identifier": "missing-prompt-ref", "enabled": true }
+      ]
+    }
+  ],
+  "extensions": {
+    "regex_scripts": [
+      {
+        "id": "r1",
+        "scriptName": "str-placement",
+        "findRegex": "/x/g",
+        "replaceString": "y",
+        "placement": "1,2",
+        "substituteRegex": "1"
+      },
+      {
+        "id": "r2",
+        "scriptName": "empty-regex",
+        "findRegex": "",
+        "replaceString": "y"
+      },
+      {
+        "id": "r3",
+        "scriptName": "string-subregex",
+        "findRegex": "/a/b/g",
+        "replaceString": "b>",
+        "substituteRegex": "2"
+      },
+      {
+        "id": "r4",
+        "scriptName": "str-placement-array",
+        "findRegex": "/n/g",
+        "replaceString": "m",
+        "placement": ["2", "1"]
+      },
+      {
+        "id": "r5",
+        "scriptName": "disabled",
+        "findRegex": "/z/g",
+        "replaceString": "q",
+        "disabled": true
+      },
+      {
+        "id": "r6",
+        "scriptName": "deep",
+        "findRegex": "/d/g",
+        "replaceString": "{{match}}",
+        "minDepth": 10,
+        "maxDepth": 40
+      },
+      {
+        "id": "r7",
+        "scriptName": "with-nested-macro",
+        "findRegex": "/w/g",
+        "replaceString": "{{random::{{user}}::a}}"
+      }
+    ],
+    "wi_rework_enabled": true
+  }
+}

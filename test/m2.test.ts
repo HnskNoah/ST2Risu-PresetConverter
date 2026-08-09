@@ -181,7 +181,7 @@ test('空脚本数组 -> 空输出,无报告', () => {
 
 test('findRegex 为空 -> manual 报告', () => {
   const { out, report } = run([{ ...base, findRegex: '' }]);
-  assert.equal(out.length, 1);
+  assert.equal(out.length, 0); // 丢弃,避免 Risu 空 pattern 匹配一切文本
   assert.equal(report.sections.regex.some((e) => e.action === 'manual' && e.fields?.includes('findRegex')), true);
 });
 

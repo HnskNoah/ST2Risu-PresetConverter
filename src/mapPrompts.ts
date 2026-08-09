@@ -3,6 +3,7 @@ import type { ExtractedSetVar, ParsedIR, Report, RisuPromptCard, ToggleDef } fro
 import { translateMacros } from './macroTable.js';
 import { extractSetVars } from './mapTriggers.js';
 import { filterSetvarsForTrigger, rewriteGetvar } from './mapToggles.js';
+import { asString } from './util.js';
 
 export function mapPrompts(
   ir: ParsedIR,
@@ -43,7 +44,7 @@ export function mapPrompts(
       });
       continue;
     }
-    const text = (p.content ?? '').trim();
+    const text = asString(p.content).trim();
     const scenarioFormat = formats.scenarioFormat;
     const withName = (card: RisuPromptCard): RisuPromptCard => (p.name ? { ...card, name: p.name } : card);
     switch (item.identifier) {
@@ -57,9 +58,23 @@ export function mapPrompts(
         break;
       case 'chatHistory':
         cards.push(withName({ type: 'chat', rangeStart: 0, rangeEnd: 'end' }));
+        if (text) {
+          report.add('prompts', {
+            identifier: 'chatHistory',
+            action: 'degraded',
+            reason: 'chatHistory 自定义 content(非空)被丢弃:Risu chat 卡由聊天历史动态生成,无文本槽位',
+          });
+        }
         break;
       case 'worldInfoBefore':
         cards.push(withName({ type: 'lorebook' }));
+        if (text) {
+          report.add('prompts', {
+            identifier: 'worldInfoBefore',
+            action: 'degraded',
+            reason: 'worldInfoBefore 自定义 content(非空)被丢弃:Risu lorebook 卡由世界书动态生成',
+          });
+        }
         break;
       case 'charDescription': {
         if (!descriptionCard) descriptionCard = { type: 'description' };
@@ -126,6 +141,12 @@ export function mapPrompts(
         break;
       default:
         cards.push(withName({ type: 'plain', type2: 'normal', text: text || '\n', role: normalizeRole(p.role) }));
+        report.add('prompts', {
+          identifier: item.identifier,
+          name: p.name,
+          action: 'converted',
+          reason: '自定义槽位(未知 identifier)降级 plain 卡,内容保真',
+        });
     }
   }
 

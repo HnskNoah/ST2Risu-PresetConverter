@@ -17,11 +17,27 @@ const RISU_FLAGS = 'dgimsuvy';
 
 const isEmpty = (v: unknown): v is null | undefined | '' => v === undefined || v === null || v === '';
 
+// substituteRegex:ST 各版本形态不一(0/1/2 数字、true/false、字符串 "1"/"2"/"true")。规范化为 0/1/2。
+function normalizeSubRegex(v: unknown): 0 | 1 | 2 {
+  if (v === true) return 1;
+  if (v === false || v === undefined || v === null) return 0;
+  const s = String(v).toLowerCase();
+  if (s === 'true' || s === '1') return 1;
+  if (s === '2' || s === 'escaped') return 2;
+  return 0;
+}
+
 function normalizePlacement(placement: RegexScript['placement']): number[] {
-  if (typeof placement === 'string') placement = placement.split(',').map((p) => Number(p.trim()));
-  if (Array.isArray(placement)) return placement;
+  if (typeof placement === 'string') {
+    return placement.split(',').map((p) => Number(p.trim())).filter((p) => !Number.isNaN(p));
+  }
+  if (Array.isArray(placement)) {
+    return placement
+      .map((p) => (typeof p === 'string' ? Number(p.trim()) : p))
+      .filter((p): p is number => typeof p === 'number' && !Number.isNaN(p));
+  }
   if (isEmpty(placement)) return [PLACEMENT.USER_INPUT, PLACEMENT.AI_OUTPUT];
-  return [placement];
+  return [Number(placement)];
 }
 
 // 提取 /pattern/flags 形式;否则视为纯 pattern。id 字段是 ST 内部 UUID(跨引用用),
@@ -36,6 +52,16 @@ function parseFindRegex(findRegex: unknown): { pattern: string; tailFlags: strin
 // 决策树:返回目标 type 列表;null 表示整脚本被丢弃。
 function decideTypes(s: RegexScript, name: string, report: Report): string[] | null {
   if (s.disabled) return ['disabled'];
+
+  // 空 findRegex:Risu 空 pattern 匹配一切文本,危险(会改写整个会话);丢弃 + manual
+  if (isEmpty(s.findRegex)) {
+    report.add('regex', {
+      scriptName: name, action: 'manual', fields: ['findRegex'],
+      reason: 'findRegex 为空;若输出 in:\'\',Risu 空 pattern 将匹配一切文本,故丢弃该脚本',
+      suggestion: '在 ST 中为脚本补全正则,或删除该脚本',
+    });
+    return null;
+  }
 
   const placement = normalizePlacement(s.placement);
   let usable = false;
@@ -100,7 +126,7 @@ function reportGaps(s: RegexScript, name: string, report: Report): void {
       scriptName: name, action: 'degraded', reason: 'Risu 正则恒在编辑时运行,与 runOnEdit=false 不符(行为差异)', fields: ['runOnEdit'],
     });
   }
-  if (s.substituteRegex === 2) {
+  if (normalizeSubRegex(s.substituteRegex) === 2) {
     report.add('regex', {
       scriptName: name, action: 'manual', reason: 'substituteRegex=ESCAPED 需人工核对替换串的特殊字符转义', fields: ['substituteRegex'],
     });
@@ -109,11 +135,6 @@ function reportGaps(s: RegexScript, name: string, report: Report): void {
 
 function buildScript(s: RegexScript, name: string, type: string, order: number, report: Report): RisuCustomScript {
   const { pattern, tailFlags } = parseFindRegex(s.findRegex);
-  if (!s.findRegex) {
-    report.add('regex', {
-      scriptName: name, action: 'manual', reason: 'findRegex 为空,脚本将无法正确匹配', fields: ['findRegex'],
-    });
-  }
   const invalid = tailFlags.filter((f) => !RISU_FLAGS.includes(f));
   if (invalid.length) {
     report.add('regex', {
@@ -125,7 +146,7 @@ function buildScript(s: RegexScript, name: string, type: string, order: number, 
   const flags = new Set(tailFlags.filter((f) => RISU_FLAGS.includes(f)));
   flags.add('g');
 
-  if (s.substituteRegex === 1 || s.substituteRegex === true) flags.add('<cbs>');
+  if (normalizeSubRegex(s.substituteRegex) === 1) flags.add('<cbs>');
 
   let out = isEmpty(s.replaceString) ? '' : String(s.replaceString);
   if (out.endsWith('>')) {

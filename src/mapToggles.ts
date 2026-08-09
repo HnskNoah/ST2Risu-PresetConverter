@@ -10,6 +10,7 @@
 // 为多分支注入;当前 enabled 卡为默认项(未选=null 时命中默认分支)。
 import type { ExtractedSetVar, Report, TavernPreset, STPrompt } from './types.js';
 import { scanSetvarMacros } from './setvarParse.js';
+import { asString } from './util.js';
 
 export interface ToggleOption {
   /** 选项内容(setvar 值) */
@@ -53,7 +54,7 @@ export function mapToggles(
   for (const item of order) {
     const p = byId.get(item.identifier);
     if (!p) continue;
-    const content = p.content ?? '';
+    const content = asString(p.content);
     for (const m of scanSetvarMacros(content)) {
       const key = m.name;
       if (!key) continue;
