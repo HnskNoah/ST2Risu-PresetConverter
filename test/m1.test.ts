@@ -1,0 +1,247 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { parseST, normalizeRole } from '../src/ir.js';
+import { mapFields } from '../src/mapFields.js';
+import { mapPrompts } from '../src/mapPrompts.js';
+import { createReport } from '../src/report.js';
+import { convert } from '../src/index.js';
+import type { TavernPreset } from '../src/types.js';
+
+// cwd 是项目根(npm test 在此运行),dist/test 与 test 均可解析
+const fixture = JSON.parse(
+  readFileSync(join(process.cwd(), 'test', 'fixtures', 'minimal-st.json'), 'utf8'),
+) as TavernPreset;
+
+test('parseST recognizes an ST preset', () => {
+  const ir = parseST(fixture);
+  assert.equal(ir.prompts.length, 7);
+  assert.equal(ir.regexScripts.length, 1);
+  assert.equal(ir.promptOrder[0].character_id, 100001);
+  assert.equal(ir.formats.scenarioFormat, undefined);
+});
+
+test('parseST rejects non-ST json', () => {
+  assert.throws(() => parseST({ name: 'x' }), /Not a SillyTavern preset/);
+});
+
+test('normalizeRole maps assistant/char -> bot', () => {
+  assert.equal(normalizeRole('assistant'), 'bot');
+  assert.equal(normalizeRole('char'), 'bot');
+  assert.equal(normalizeRole('user'), 'user');
+  assert.equal(normalizeRole('system'), 'system');
+  assert.equal(normalizeRole(undefined), 'system');
+});
+
+test('mapFields converts samplers with x100 and drops unsupported', () => {
+  const report = createReport('t');
+  const out = mapFields(fixture, report);
+  assert.equal(out.temperature, 100);
+  assert.equal(out.frequencyPenalty, 30);
+  assert.equal(out.PresensePenalty, 50);
+  assert.equal(out.top_p, 1);
+  assert.equal(out.repetition_penalty, 1.1);
+  assert.equal(out.maxContext, 8192);
+  assert.equal(out.maxResponse, 512);
+  assert.equal(out.name, 'minimal');
+
+  const dropped = report.sections.topLevel.filter((e) => e.action === 'dropped');
+  const droppedFields = dropped.map((e) => e.field as string);
+  assert.ok(droppedFields.includes('seed'));
+  assert.ok(droppedFields.includes('stream_openai'));
+  assert.ok(droppedFields.includes('bias_preset_selected'));
+});
+
+test('mapFields presence_penalty missing -> 0 (decision)', () => {
+  const report = createReport('t');
+  const { presence_penalty: _presence_penalty, ...noPresence } = fixture;
+  const out = mapFields(noPresence, report);
+  assert.equal(out.PresensePenalty, 0);
+});
+
+test('mapPrompts applies identifier mapping and decisions', () => {
+  const report = createReport('t');
+  const ir = parseST(fixture);
+  const cards = mapPrompts(ir, report);
+
+  const main = cards.find((c) => c.type2 === 'main');
+  assert.ok(main);
+  assert.equal(main.type, 'plain');
+  assert.equal(main.role, 'system');
+
+  const description = cards.find((c) => c.type === 'description');
+  assert.ok(description);
+  assert.match(description.innerFormat as string, /\{\{scenario\}\}/); // scenario merged in
+
+  assert.ok(cards.some((c) => c.type === 'chat' && c.rangeEnd === 'end'));
+
+  // worldInfoAfter degraded plain, placed before the prefill block
+  const wi = cards.find((c) => c.text === '{{wiAfter}}');
+  assert.ok(wi);
+  assert.equal(wi.type, 'plain');
+  const postEverythingIdx = cards.findIndex((c) => c.type === 'postEverything');
+  assert.ok(cards.indexOf(wi) < postEverythingIdx);
+
+  // charPersonality degraded plain
+  const personality = cards.find((c) => c.text === '{{personality}}');
+  assert.ok(personality);
+  assert.equal(personality.type, 'plain');
+
+  // assistant_prefill 存在时模板仍必须恰好一张 type2==='main' 卡
+  const mainCards = cards.filter((c) => c.type2 === 'main');
+  assert.equal(mainCards.length, 1);
+  // assistant_prefill -> postEverything 卡的 innerFormat(官方模板,不另生 main 卡)
+  const post = cards.find((c) => c.type === 'postEverything');
+  assert.ok(post);
+  assert.match(post.innerFormat as string, /continue/); // prefill 文本保留
+  assert.match(post.innerFormat as string, /prefill_supported/);
+
+  const degraded = report.sections.prompts.filter((e) => e.action === 'degraded').map((e) => e.identifier as string);
+  assert.ok(degraded.includes('scenario'));
+  assert.ok(degraded.includes('charPersonality'));
+  assert.ok(degraded.includes('worldInfoAfter'));
+});
+
+test('disabled prompts are skipped', () => {
+  const report = createReport('t');
+  const ir = parseST(fixture);
+  const cards = mapPrompts(ir, report);
+  assert.ok(!cards.some((c) => c.text === 'be nice')); // jailbreak disabled
+});
+
+test('mapFields reports behavior strings / reasoning params / platform switches', () => {
+  const report = createReport('t');
+  const top = {
+    ...fixture,
+    impersonation_prompt: 'reply as {{char}}',
+    continue_prefill: true,
+    reasoning_effort: 'auto',
+    show_thoughts: true,
+    wrap_in_quotes: true,
+    image_inlining: true,
+    function_calling: true,
+  };
+  mapFields(top, report);
+
+  const manualFields = report.sections.topLevel.filter((e) => e.action === 'manual').map((e) => e.field as string);
+  assert.ok(manualFields.includes('impersonation_prompt'));
+  assert.ok(manualFields.includes('continue_prefill'));
+  assert.ok(manualFields.includes('reasoning_effort'));
+  assert.ok(manualFields.includes('show_thoughts'));
+
+  const droppedFields = report.sections.topLevel.filter((e) => e.action === 'dropped').map((e) => e.field as string);
+  assert.ok(droppedFields.includes('wrap_in_quotes'));
+  assert.ok(droppedFields.includes('image_inlining'));
+  assert.ok(droppedFields.includes('function_calling'));
+});
+
+test('mapFields reports extensions plugin sub-keys (except regex_scripts)', () => {
+  const report = createReport('t');
+  const top = {
+    ...fixture,
+    extensions: { regex_scripts: [], SPreset: { version: 1 }, tavern_helper: { enabled: true } },
+  };
+  mapFields(top, report);
+  const manualFields = report.sections.topLevel.filter((e) => e.action === 'manual').map((e) => e.field as string);
+  assert.ok(manualFields.includes('extensions.SPreset'));
+  assert.ok(manualFields.includes('extensions.tavern_helper'));
+});
+
+test('mapPrompts preserves custom charDescription content before scenario merge', () => {
+  const report = createReport('t');
+  const ir = parseST({
+    ...fixture,
+    prompts: [
+      ...(fixture.prompts ?? []),
+      {
+        identifier: 'charDescription',
+        name: 'Description',
+        role: 'system',
+        content: 'CUSTOM DESC {{description}}',
+      },
+    ],
+    prompt_order: [
+      {
+        character_id: 100001,
+        order: [
+          { identifier: 'scenario', enabled: true },
+          { identifier: 'charDescription', enabled: true },
+        ],
+      },
+    ],
+  });
+  const cards = mapPrompts(ir, report);
+  const description = cards.find((c) => c.type === 'description');
+  assert.ok(description);
+  const fmt = description.innerFormat as string;
+  assert.ok(fmt.includes('CUSTOM DESC'), 'custom description preserved');
+  assert.ok(fmt.includes('{{scenario}}'), 'scenario content merged after custom description');
+  const degraded = report.sections.prompts.filter((e) => e.action === 'degraded').map((e) => e.identifier as string);
+  assert.ok(degraded.includes('charDescription'));
+});
+
+test('convert produces preset + report', () => {
+  const { preset, report } = convert(fixture, { source: 'minimal-st.json' });
+  assert.equal(preset.name, 'minimal');
+  assert.equal(preset.temperature, 100);
+  assert.ok(Array.isArray(preset.promptTemplate));
+  assert.ok(Array.isArray(preset.regex));
+  assert.equal(preset.regex.length, 1);
+  assert.equal(preset.regex[0].type, 'editdisplay'); // markdownOnly + placement[2]
+  assert.equal(preset.regex[0].in, 'x');
+  assert.equal(preset.regex[0].out, 'y');
+  assert.equal(report.source, 'minimal-st.json');
+  assert.ok(report.summary.dropped >= 3);
+  assert.equal(report.summary.converted, 2); // assistant_prefill + 正则脚本
+  const converted = report.sections.regex.filter((e) => e.action === 'converted');
+  assert.equal(converted.length, 1);
+});
+
+function reorderFixture(scenarioFirst: boolean): TavernPreset {
+  const copy: TavernPreset = JSON.parse(JSON.stringify(fixture));
+  const orderArr = copy.prompt_order![0].order!;
+  const desc = orderArr.find((o) => o.identifier === 'charDescription')!;
+  const scen = orderArr.find((o) => o.identifier === 'scenario')!;
+  orderArr.splice(orderArr.indexOf(desc), 1);
+  orderArr.splice(orderArr.indexOf(scen), 1);
+  orderArr.splice(0, 0, ...(scenarioFirst ? [scen, desc] : [desc, scen]));
+  return copy;
+}
+
+test('scenario 在 charDescription 之前时仍并入 description 卡(顺序无关)', () => {
+  const report = createReport('t');
+  const cards = mapPrompts(parseST(reorderFixture(true)), report);
+  const descCards = cards.filter((c) => c.type === 'description');
+  assert.equal(descCards.length, 1);
+  assert.match(descCards[0].innerFormat as string, /\{\{scenario\}\}/);
+  // 不应出现独立的 scenario plain 卡
+  assert.ok(!cards.some((c) => c.type2 === 'normal' && c.text === '{{scenario}}'));
+});
+
+test('scenario_format 驱动 description 卡 innerFormat', () => {
+  const report = createReport('t');
+  const withFormat: TavernPreset = { ...fixture, scenario_format: 'System note: {{scenario}}' };
+  const cards = mapPrompts(parseST(withFormat), report);
+  const desc = cards.find((c) => c.type === 'description')!;
+  assert.ok(desc);
+  assert.match(desc.innerFormat as string, /System note: \{\{scenario\}\}/);
+  assert.match(desc.innerFormat as string, /\{\{slot\}\}/);
+});
+
+test('未知顶层字段 -> manual 报告', () => {
+  const report = createReport('t');
+  mapFields({ ...fixture, some_unknown_key: 'value' }, report);
+  const manual = report.sections.topLevel.find((e) => e.action === 'manual' && e.field === 'some_unknown_key');
+  assert.ok(manual);
+});
+
+test('apiType/aiModel 有值 -> manual 报告,不发明输出字段', () => {
+  const report = createReport('t');
+  const out = mapFields({ ...fixture, apiType: 'openai', aiModel: 'gpt-4o' }, report);
+  assert.ok(!('apiType' in out));
+  assert.ok(!('aiModel' in out));
+  assert.ok(report.sections.topLevel.some((e) => e.action === 'manual' && e.field === 'apiType'));
+  assert.ok(report.sections.topLevel.some((e) => e.action === 'manual' && e.field === 'aiModel'));
+});

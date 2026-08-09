@@ -1,5 +1,7 @@
 # Tavern → Risu 通用转换器:设计稿 v1
 
+> **目标北极星:`docs/GOALS.md`(通用转换器——任意 ST preset,非特定 preset 专用)。本稿为实现它的设计。**
+
 日期:2026-08-09
 依据:round1-6 全部调研(`research/round*.md`)+ Risu 能力全景(`research/round6-risu-capabilities.md`)
 状态:设计定稿,可据此编码
@@ -146,12 +148,14 @@ placement 数组:
 |---|---|
 | `comment` | `[scriptName]`(可拼接功能描述) |
 | `in` | `findRegex`:剥 `/pattern/flags` 形式,flag 合并到 flag 字段;Tavern 特有 flag(`X/A/J`)→ 报告并剔除;`substituteRegex=1` 时加 `<cbs>` |
-| `out` | `replaceString`:`{{match}}`→`$&`(等价,不改);若以 `>` 结尾 → actions 加 `<no_end_nl>`(`scripts.ts:163-165`) |
+| `out` | `replaceString`:字面 `{{match}}`→`{{data}}`(Risu 全匹配宏,等价);若以 `>` 结尾 → 去掉 `>` 并加 `<no_end_nl>`(`scripts.ts:163-165`) |
 | `flag` | 合并正则 flag(`g/m/i/s/u`)+ `ableFlag=true` 时加 actions 标签 |
 | `ableFlag` | 当存在任何 `<...>` 标签(含 `<cbs>`/`<order>`/深度)或非默认 flag 时 `true` |
 | 顺序 | 数组内 index i → `<order {n-i}>` 思路:Tavern 先执行者给大 order(Risu 降序先执行),保持相对顺序 |
-| `trimStrings` | **报告 dropped**,不自动处理 |
-| `runOnEdit` | **报告 dropped** |
+| `trimStrings` | **报告 degraded**,不自动处理 |
+| `runOnEdit` | **报告 degraded** |
+
+> 尾部 `>` 语义:`replaceString` 以 `>` 结尾时 Risu 会自动补 `\n`(Tavern 不会);转换器去掉尾部 `>` 并加 `<no_end_nl>` 保持原始"结尾无换行"语义。
 | `substituteRegex=2` | **报告 manual**(运行时转义,静态不可转) |
 | 深度 | 见 §6 |
 
@@ -186,14 +190,18 @@ in 需吞掉尾部换行(如 findRegex 末尾补 [\s\S]*),避免删除后留空�
 
 ## 6. 差异报告(report.js)
 
+> 本节已过时,以 `research/round6-converter-spec.md` §7 为准。实际 schema(schema 漂移修正,代码与 round6 §7 一致):
+
 ```jsonc
 {
   "source": "文件名",
-  "summary": { "converted": n, "dropped": n, "degraded": n, "manual": n, "regexScripts": { "total": n, "produced": n } },
-  "topLevel":  [ /* 顶层字段 */ ],
-  "regex": [ { "name", "action":"dropped|degraded|manual|split", "fields":[], "reason", "suggestion" } ],
-  "prompts": [ { "identifier", "action", "reason" } ],
-  "macros":  [ { "macro", "action":"kept|rewritten|unknown", "note" } ]
+  "summary": { "converted": n, "dropped": n, "degraded": n, "manual": n },   // 无 regexScripts 子对象
+  "sections": {
+    "topLevel": [ { "field", "action": "dropped|degraded|manual", "reason", "suggestion?" } ],
+    "regex": [ { "scriptName", "type?", "action": "converted|dropped|degraded|manual", "fields"?, "reason", "suggestion?" } ],
+    "prompts": [ { "identifier", "action", "reason" } ],
+    "macros": [ { "macro", "action", "reason" } ]
+  }
 }
 ```
 - 报告**强制生成**,随转换产物一起落盘(`.report.json`)。
@@ -239,3 +247,17 @@ in 需吞掉尾部换行(如 findRegex 末尾补 [\s\S]*),避免删除后留空�
 | 2 | `worldInfoAfter` | v1 降级 plain(模板末尾);`@@position pt_wiAfter` 双槽位列入 M5 |
 | 3 | 深度 `<cbs>` 与 `in` 宏 | 实现时用单测验证 `scripts.ts:176-179` 语义(编码期确认,非设计决策) |
 | 4 | `{{chatindex}}=-1` 兜底 | 不加兜底,仅报告 manual |
+
+## 11. 变更记录(实现期决策,2026-08-09)
+
+| # | 变更 | 说明 |
+|---|---|---|
+| 1 | 全项目 TS 化 | src/test 用 TypeScript;`tsc -p tsconfig.build.json` 编译到 `dist/`(src+test);`bin`→`dist/src/cli.js`;`engines.node≥21`(test glob 需要) |
+| 2 | `assistant_prefill` 模板形态修正 | 官方模板:prefill 挂 `postEverything` 卡的 `innerFormat`,`role2:'bot'`;不再另生 `type2:'main'` 卡(模板必须恰一张 main) |
+| 3 | `scenario_format` 消费 | description 卡 innerFormat 经 `scenario_format` 包装(`{{scenario}}`→内容);`wi_format` 非默认→manual |
+| 4 | `charDescription` 自定义内容 | `≠ {{description}}` 时并入 innerFormat 前缀(degraded 报告),与 scenario 合并顺序无关 |
+| 5 | 顶层范围决策(SCOPE) | 行为字符串 / 思考参数 → manual;平台开关 → dropped;extensions 插件子键 → manual;正则 `id` → dropped(汇总) |
+| 6 | 报告动作修正 | `trimStrings`/`runOnEdit` 用 `degraded`(脚本主体仍转换),修正 §5.2 |
+| 7 | `{{match}}` → `{{data}}` | 正则 replaceString 中精确 token 翻译(Risu 仅自动映射 `{{data}}`→`$&`) |
+| 8 | 换行语义明确 | replaceString 尾部 `>` → 去掉 + flag `<no_end_nl>`(ST 无换行标记,Risu 等价标签) |
+| 9 | 报告 schema 定稿 | 以 round6-converter-spec §7 为准(嵌套 `sections` + `summary`),§6 已同步 |

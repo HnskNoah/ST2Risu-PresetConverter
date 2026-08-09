@@ -1,0 +1,53 @@
+{
+  "name": "minimal",
+  "temperature": 1.0,
+  "top_p": 1,
+  "top_k": 0,
+  "presence_penalty": 0.5,
+  "frequency_penalty": 0.3,
+  "repetition_penalty": 1.1,
+  "openai_max_context": 8192,
+  "openai_max_tokens": 512,
+  "stream_openai": true,
+  "seed": 42,
+  "bias_preset_selected": "Anti-bond",
+  "assistant_prefill": "continue",
+  "prompts": [
+    { "identifier": "main", "name": "Main", "role": "system", "content": "You are {{char}}." },
+    { "identifier": "charDescription", "name": "Description", "role": "system", "content": "{{description}}" },
+    { "identifier": "scenario", "name": "Scenario", "role": "system", "content": "{{scenario}}" },
+    { "identifier": "charPersonality", "name": "Personality", "role": "system", "content": "{{personality}}" },
+    { "identifier": "chatHistory", "name": "Chat History", "role": "system", "content": "" },
+    { "identifier": "jailbreak", "name": "Jailbreak", "role": "system", "content": "be nice" },
+    { "identifier": "worldInfoAfter", "name": "WI After", "role": "system", "content": "{{wiAfter}}" }
+  ],
+  "prompt_order": [
+    {
+      "character_id": 100001,
+      "order": [
+        { "identifier": "main", "enabled": true },
+        { "identifier": "charDescription", "enabled": true },
+        { "identifier": "scenario", "enabled": true },
+        { "identifier": "charPersonality", "enabled": true },
+        { "identifier": "jailbreak", "enabled": false },
+        { "identifier": "chatHistory", "enabled": true },
+        { "identifier": "worldInfoAfter", "enabled": true }
+      ]
+    }
+  ],
+  "extensions": {
+    "regex_scripts": [
+      {
+        "id": "a",
+        "scriptName": "test",
+        "findRegex": "/x/g",
+        "replaceString": "y",
+        "trimStrings": [],
+        "placement": [2],
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "st2risu",
+  "version": "0.1.0",
+  "description": "SillyTavern preset -> RisuAI preset converter (generic)",
+  "type": "module",
+  "bin": { "st2risu": "dist/src/cli.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "convert": "node dist/src/cli.js",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": { "node": ">=21" },
+  "license": "MIT"
+}
