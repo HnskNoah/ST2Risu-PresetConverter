@@ -1,9 +1,14 @@
 import { normalizeRole } from './ir.js';
-import type { ExtractedSetVar, ParsedIR, Report, RisuPromptCard } from './types.js';
+import type { ExtractedSetVar, ParsedIR, Report, RisuPromptCard, ToggleDef } from './types.js';
 import { translateMacros } from './macroTable.js';
 import { extractSetVars } from './mapTriggers.js';
+import { filterSetvarsForTrigger, rewriteGetvar } from './mapToggles.js';
 
-export function mapPrompts(ir: ParsedIR, report: Report): { cards: RisuPromptCard[]; setvars: ExtractedSetVar[] } {
+export function mapPrompts(
+  ir: ParsedIR,
+  report: Report,
+  toggle?: { defs: Map<string, ToggleDef>; toggleKeys: Set<string> },
+): { cards: RisuPromptCard[]; setvars: ExtractedSetVar[] } {
   const { prompts, promptOrder, formats } = ir;
   const order = promptOrder[0]?.order ?? [];
   const byId = new Map(prompts.map((p) => [p.identifier, p]));
@@ -136,6 +141,8 @@ export function mapPrompts(ir: ParsedIR, report: Report): { cards: RisuPromptCar
   // 触发器提取:从卡文本剔除 setvar 宏并收集(round9 修正:setvar 在 prompt 卡内 runVar=false 不执行,
   // 必须转成 start 触发器 effect;剔除文本避免字面量残留)。须在 M3 宏翻译之前,否则 translateMacros
   // 会对 setvar 报 manual。
+  // round11:被 toggle 化的变量(setvar 卡组)从触发器排除——否则 start 触发器每次重置变量,
+  // 覆盖 toggle 选择;其内容改由消费点 getvar 改写注入。
   const setvars: ExtractedSetVar[] = [];
   for (const c of cards) {
     if (typeof c.text === 'string') {
@@ -148,6 +155,13 @@ export function mapPrompts(ir: ParsedIR, report: Report): { cards: RisuPromptCar
       c.innerFormat = r.text;
       setvars.push(...r.setvars);
     }
+  }
+  const triggerSetvars = toggle ? filterSetvarsForTrigger(setvars, toggle.toggleKeys) : setvars;
+
+  // round11:消费点改写 —— {{getvar::X}} → N 分支 if 注入(仅 toggle 化的变量)
+  for (const c of cards) {
+    if (typeof c.text === 'string' && toggle) c.text = rewriteGetvar(c.text, toggle.defs);
+    if (typeof c.innerFormat === 'string' && toggle) c.innerFormat = rewriteGetvar(c.innerFormat, toggle.defs);
   }
 
   // M3: 宏翻译(每张卡的 text / innerFormat)
@@ -195,5 +209,5 @@ export function mapPrompts(ir: ParsedIR, report: Report): { cards: RisuPromptCar
     });
   }
 
-  return { cards, setvars };
+  return { cards, setvars: triggerSetvars };
 }

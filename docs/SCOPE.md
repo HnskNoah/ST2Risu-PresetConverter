@@ -10,17 +10,19 @@
 | 1 | 采样参数 + 上下文/输出长度 | ✅ 已实现 | temperature/penalty/top_p/k/a/min_p/rep_penalty/maxContext/maxResponse |
 | 2 | prompts + prompt_order → promptTemplate | ✅ 基础版 | 任意 identifier(含 UUID 自定义块)降级 plain 卡,保真文本/角色/顺序/启用态 |
 | 3 | 正则脚本 → customscript | ✅ M2 已实现 | 13 字段决策树 |
-| 4 | 宏翻译 | ✅ M3 已实现 | A 直通/B 同名不同义/C 翻译/D 未知透传(`macroTable.ts`);`{{setglobalvar}}`→manual(Risu 无此宏);`{{setvar}}/{{addvar}}/{{setdefaultvar}}`→manual(round9:Risu 中仅 `runVar=true` 执行,卡内不生效,提示触发器/`customPromptTemplateToggle` 迁移) |
+| 4 | 宏翻译 | ✅ M3 已实现 | A 直通/B 同名不同义/C 翻译/D 未知透传(`macroTable.ts`);`{{setglobalvar}}`→manual(Risu 无此宏) |
 | 5 | 正则深度过滤 | ✅ M3 已实现 | minDepth/maxDepth → OUT `{{#if}}` 守卫 + `<cbs>` + in 吞换行(round5 §7);`{{chatindex}}=-1` 边界报 degraded |
+| 6 | setvar/addvar/incvar/decvar → start 触发器 | ✅ round10 已实现 | `mapTriggers.ts` 提取为 start 触发器 setvar effect(每次 prompt 构建前执行),从卡文本剔除宏;嵌套宏值用 `setvarParse.ts` 平衡解析提取。输出 `<base>.module.json`(risuModule)。详见 DESIGN #14、docs/research/round10-risu-triggers.md |
+| 7 | 变量卡组 → customPromptTemplateToggle | ✅ round11 已实现 | ST"开关卡"=候选卡组+enabled 快照;`mapToggles.ts` → select 保留全部选项,消费点 `{{getvar::X}}` → N 分支 if 内容注入(默认项 or-null 兜底),写入 `preset.customPromptTemplateToggle`;toggle 化变量从触发器排除。详见 DESIGN #15、docs/research/round11-risu-toggle.md |
 
 ## 二、待决策(需要拍板方向)
 
 | # | 部分 | 现状问题 |
 |---|---|---|
-| 6 | **prompt_order 多角色** | ~~ST 可含多条 prompt_order(按 character_id);Risu 是单模板。~~ **已决(2026-08-09):只转换 `prompt_order[0]`,其余不管**。真实预设(此间小镇)仅 1 条,多角色场景不投入。 |
-| 7 | **顶层行为字符串** | **已决(2026-08-09):v1 报告 manual,不转换**。`impersonation_prompt / new_chat_prompt / new_group_chat_prompt / new_example_chat_prompt / continue_nudge_prompt / group_nudge_prompt / continue_postfix / continue_prefill / send_if_empty / assistant_impersonation` → mapFields 逐项 manual 报告。 |
-| 8 | **思考参数** | **已决(2026-08-09):v1 报告 manual,不转换**。`reasoning_effort / show_thoughts` → mapFields manual 报告,待调研 Risu 思考参数映射。 |
-| 9 | **格式模板** | `wi_format / scenario_format / personality_format` → scenario_format 已用于 description 卡 innerFormat;`wi_format` 未消费 → manual 报告。 |
+| 8 | **prompt_order 多角色** | ~~ST 可含多条 prompt_order(按 character_id);Risu 是单模板。~~ **已决(2026-08-09):只转换 `prompt_order[0]`,其余不管**。真实预设(此间小镇)仅 1 条,多角色场景不投入。 |
+| 9 | **顶层行为字符串** | **已决(2026-08-09):v1 报告 manual,不转换**。`impersonation_prompt / new_chat_prompt / new_group_chat_prompt / new_example_chat_prompt / continue_nudge_prompt / group_nudge_prompt / continue_postfix / continue_prefill / send_if_empty / assistant_impersonation` → mapFields 逐项 manual 报告。 |
+| 10 | **思考参数** | **已决(2026-08-09):v1 报告 manual,不转换**。`reasoning_effort / show_thoughts` → mapFields manual 报告,待调研 Risu 思考参数映射。 |
+| 11 | **格式模板** | `wi_format / scenario_format / personality_format` → scenario_format 已用于 description 卡 innerFormat;`wi_format` 未消费 → manual 报告。 |
 
 ## 三、忽略(报告即可,不转换)
 

@@ -80,7 +80,7 @@ export interface ReportEntry {
   [key: string]: unknown;
 }
 
-export type ReportSection = 'topLevel' | 'regex' | 'prompts' | 'macros';
+export type ReportSection = 'topLevel' | 'regex' | 'prompts' | 'macros' | 'toggles';
 
 export interface Report {
   source: string;
@@ -118,6 +118,7 @@ export interface MapFieldsResult {
 export interface RisuPreset extends MapFieldsResult {
   promptTemplate: RisuPromptCard[];
   regex: RisuCustomScript[];
+  customPromptTemplateToggle?: string;
 }
 
 // —— 触发器(ST setvar 宏 → Risu trigger)——
@@ -142,6 +143,20 @@ export interface RisuModule {
   description: string;
   id: string;
   trigger?: TriggerScript[];
+}
+
+// —— 变量 toggle(customPromptTemplateToggle)——
+export interface ToggleOption {
+  content: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface ToggleDef {
+  key: string;
+  label: string;
+  options: ToggleOption[];
+  defaultIndex: number;
 }
 
 export interface ConvertResult {

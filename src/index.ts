@@ -4,15 +4,26 @@ import { mapFields } from './mapFields.js';
 import { mapPrompts } from './mapPrompts.js';
 import { mapRegexes } from './mapRegexes.js';
 import { buildModule } from './mapTriggers.js';
+import { mapToggles } from './mapToggles.js';
 import type { ConvertResult } from './types.js';
 
 export function convert(tavernJson: unknown, opts: { source?: string } = {}): ConvertResult {
   const report = createReport(opts.source ?? 'preset');
   const ir = parseST(tavernJson);
   const fields = mapFields(ir.topLevel, report);
-  const { cards: promptTemplate, setvars } = mapPrompts(ir, report);
+  // round11: 变量卡组 → customPromptTemplateToggle(基于原始 prompts+order,含 disabled 候选)
+  const toggles = mapToggles(ir.topLevel, ir.prompts, ir.promptOrder[0]?.order ?? [], report);
+  const { cards: promptTemplate, setvars } = mapPrompts(ir, report, {
+    defs: toggles.defs,
+    toggleKeys: toggles.toggleKeys,
+  });
   const regex = mapRegexes(ir.regexScripts, report);
-  const preset = { ...fields, promptTemplate, regex };
+  const preset = {
+    ...fields,
+    promptTemplate,
+    regex,
+    ...(toggles.toggleTemplate ? { customPromptTemplateToggle: toggles.toggleTemplate } : {}),
+  };
   const module = buildModule({ setvars, source: opts.source ?? 'preset' })?.module ?? null;
   return { preset, report, module };
 }
