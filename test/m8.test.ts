@@ -163,7 +163,7 @@ test('MCP: convert_and_validate 变异预设转换 + 校验 OK', async () => {
       preset?: { promptTemplate?: unknown[]; regex?: unknown[] };
     };
     assert.equal(sc?.validation?.ok, true);
-    assert.equal(sc?.preset?.promptTemplate?.length, 11);
+    assert.equal(sc?.preset?.promptTemplate?.length, 12); // 11 + disabled jailbreak 守卫卡
     assert.equal(sc?.preset?.regex?.length, 11);
   } finally {
     s.kill();

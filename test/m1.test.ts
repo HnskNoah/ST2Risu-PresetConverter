@@ -325,7 +325,7 @@ test('convert produces preset + report', () => {
   assert.equal(preset.regex[0].out, 'y');
   assert.equal(report.source, 'minimal-st.json');
   assert.ok(report.summary.dropped >= 3);
-  assert.equal(report.summary.converted, 2); // assistant_prefill + 正则脚本
+  assert.equal(report.summary.converted, 3); // assistant_prefill + 正则脚本 + disabled 守卫卡 toggle
   const converted = report.sections.regex.filter((e) => e.action === 'converted');
   assert.equal(converted.length, 1);
 });

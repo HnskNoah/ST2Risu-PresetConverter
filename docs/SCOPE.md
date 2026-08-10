@@ -15,6 +15,7 @@
 | 6 | setvar/addvar/incvar/decvar → start 触发器 | ✅ round10 已实现 | `mapTriggers.ts` 提取为 start 触发器 setvar effect(每次 prompt 构建前执行),从卡文本剔除宏;嵌套宏值用 `setvarParse.ts` 平衡解析提取。输出 `<base>.module.json`(risuModule)。详见 DESIGN #14、docs/research/round10-risu-triggers.md |
 | 7 | 变量卡组 → customPromptTemplateToggle | ✅ round11 已实现 | ST"开关卡"=候选卡组+enabled 快照;`mapToggles.ts` → select 保留全部选项,消费点 `{{getvar::X}}` → N 分支 if 内容注入(默认项 or-null 兜底),写入 `preset.customPromptTemplateToggle`;toggle 化变量从触发器排除。详见 DESIGN #15、docs/research/round11-risu-toggle.md |
 | 7b | instruct 模式三件套 | ✅ round17 已实现 | ST instruct preset(`--instruct <file>` 第二输入,或主预设顶层 `instruct` 块)→ `useInstructPrompt` + `instructChatTemplate='jinja'` + `JinjaTemplate`(官方 prompt.ts 算法蓝本;修复官方 first/last_output_sequence 丢弃与 story_string 预处理误删)。详见 docs/research/round17-instruct-mode.md |
+| 7c | disabled prompt 卡(孤立) | ✅ round18 已实现 | ST 关掉的卡(无 setvar 变量,如破限示例/提示卡)→ 默认关闭的开关 toggle + 守卫卡(开启才注入),让用户可在 Risu 重新打开;含 `{{setvar::` 的变量组候选归 toggle 不重复。详见 docs/research/round18-disabled-switches.md |
 
 ## 二、待决策(需要拍板方向)
 
