@@ -28,6 +28,9 @@ const DROPPED_NO_EQUIVALENT = [
   'function_calling',
   'enable_web_search',
   'request_images',
+  'tool_call_recurse_limit',
+  'request_image_aspect_ratio',
+  'request_image_resolution',
 ] as const;
 
 // 顶层行为字符串:Risu 均为硬编码注入,无 botPreset 字段。
@@ -53,6 +56,16 @@ const BEHAVIOR_SILENT_IGNORE = [
 
 // 思考参数:show_thoughts v1 报告 manual(待调研);reasoning_effort 已映射到 Risu reasonEffort
 const REASONING_MANUAL = ['show_thoughts'] as const;
+
+// verbosity:ST auto/low/medium/high(字符串,openai.js:246 verbosity_levels)
+// -> Risu 0/1/2(number,botSettingsParamsData.ts:295 Low/Medium/High)。
+// auto 语义"由模型决定",Risu 无 auto -> 映射 1(medium,与 Risu 默认一致)。
+const VERBOSITY_MAP: Record<string, number> = {
+  auto: 1,
+  low: 0,
+  medium: 1,
+  high: 2,
+};
 
 // ST reasoning_effort -> Risu reasonEffort(0=Low/1=Medium/2=High,3=XHigh 无 ST 等价)
 const REASONING_EFFORT_MAP: Record<string, number> = {
@@ -81,6 +94,7 @@ const CONSUMED_OR_REPORTED = new Set<string>([
   'scenario_format',
   'personality_format',
   'reasoning_effort',
+  'verbosity',
   'temperature',
   'frequency_penalty',
   'presence_penalty',
@@ -166,6 +180,26 @@ export function mapFields(top: TavernPreset, report: Report): MapFieldsResult {
     }
   }
   // 空值行为字段:默认即空,忽略不报告(避免噪音)
+
+  // verbosity:ST auto/low/medium/high -> Risu 0/1/2(round16;auto 无 Risu 等价,映射 medium=1)
+  if (hasValue(top.verbosity)) {
+    const mapped = VERBOSITY_MAP[String(top.verbosity).toLowerCase()];
+    if (mapped !== undefined) {
+      out.verbosity = mapped;
+      const note = String(top.verbosity).toLowerCase() === 'auto' ? '(auto 无 Risu 等价,映射 medium=1)' : '';
+      report.add('topLevel', {
+        field: 'verbosity',
+        action: 'converted',
+        reason: `verbosity '${String(top.verbosity)}' -> Risu verbosity=${mapped}(0=Low/1=Medium/2=High) ${note}`,
+      });
+    } else {
+      report.add('topLevel', {
+        field: 'verbosity',
+        action: 'manual',
+        reason: `verbosity '${String(top.verbosity)}' 无 Risu 等价(auto/low/medium/high),未写入`,
+      });
+    }
+  }
 
   // 思考参数:show_thoughts v1 报告 manual(SCOPE 决策)
   for (const field of REASONING_MANUAL) {

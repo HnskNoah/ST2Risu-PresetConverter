@@ -110,6 +110,8 @@ test('通用不变量:采样字段类型变异(字符串/布尔/null)不崩溃',
   assert.equal(typeof preset.maxResponse, 'number');
   // 布尔 min_p 应被拒绝(宽松强转陷阱),用默认值
   assert.equal(preset.min_p, 0);
+  // verbosity 字符串 'low' -> 0(round16 直通映射)
+  assert.equal((preset as any).verbosity, 0);
 });
 
 test('通用不变量:toggle 化变量卡组保留全部候选(嵌套宏值注入消费点)', () => {

@@ -24,6 +24,7 @@
   "new_chat_prompt": "",
   "show_thoughts": true,
   "reasoning_effort": "high",
+  "verbosity": "low",
   "unknown_custom_field": "custom value",
   "prompts": [
     { "identifier": "main", "name": "Main", "role": "system", "content": "You are {{char}}." },

@@ -246,6 +246,28 @@ test('mapFields reasoning_effort auto -> manual,不写入', () => {
   assert.ok(report.sections.topLevel.some((e) => e.action === 'manual' && e.field === 'reasoning_effort'));
 });
 
+test('mapFields maps verbosity low/medium/high/auto -> 0/1/2', () => {
+  for (const [st, risu] of [
+    ['low', 0],
+    ['medium', 1],
+    ['high', 2],
+    ['HIGH', 2],
+    ['auto', 1],
+  ] as const) {
+    const report = createReport('t');
+    const out = mapFields({ ...fixture, verbosity: st } as any, report);
+    assert.equal(out.verbosity, risu, `verbosity=${st}`);
+    assert.ok(report.sections.topLevel.some((e) => e.action === 'converted' && e.field === 'verbosity'));
+  }
+});
+
+test('mapFields verbosity 非法值 -> manual,不写入', () => {
+  const report = createReport('t');
+  const out = mapFields({ ...fixture, verbosity: 'ultra' } as any, report);
+  assert.ok(!('verbosity' in out));
+  assert.ok(report.sections.topLevel.some((e) => e.action === 'manual' && e.field === 'verbosity'));
+});
+
 test('mapFields reports extensions plugin sub-keys (except regex_scripts)', () => {
   const report = createReport('t');
   const top = {

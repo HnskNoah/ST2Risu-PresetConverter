@@ -112,6 +112,7 @@ export interface MapFieldsResult {
   maxContext: number;
   maxResponse: number;
   reasonEffort?: number;
+  verbosity?: number;
   promptSettings?: { postEndInnerFormat?: string };
   name?: string;
 }
