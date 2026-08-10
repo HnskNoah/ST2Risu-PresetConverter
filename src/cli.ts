@@ -4,9 +4,14 @@ import { basename } from 'node:path';
 import { convert } from './index.js';
 import { validateAll } from './validate.js';
 
-const inputPath = process.argv[2];
-if (!inputPath) {
-  console.error('usage: st2risu <tavern-preset.json>');
+// usage: st2risu <tavern-preset.json> [--instruct <instruct-preset.json>]
+//  --instruct 指定 ST instruct 预设(独立第二输入),生成 Risu instruct 模式(JinjaTemplate)
+const argv = process.argv.slice(2);
+const inputPath = argv[0];
+const instrIdx = argv.indexOf('--instruct');
+const instructPath = instrIdx >= 0 ? argv[instrIdx + 1] : undefined;
+if (!inputPath || inputPath.startsWith('--')) {
+  console.error('usage: st2risu <tavern-preset.json> [--instruct <instruct-preset.json>]');
   process.exit(1);
 }
 
@@ -18,11 +23,24 @@ try {
   process.exit(1);
 }
 
+let instructRaw: unknown;
+if (instructPath) {
+  try {
+    instructRaw = JSON.parse(readFileSync(instructPath, 'utf8'));
+  } catch (err) {
+    console.error(`cannot read --instruct ${instructPath}: ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+
 let preset: ReturnType<typeof convert>['preset'];
 let report: ReturnType<typeof convert>['report'];
 let module: ReturnType<typeof convert>['module'];
 try {
-  ({ preset, report, module } = convert(JSON.parse(raw), { source: basename(inputPath) }));
+  ({ preset, report, module } = convert(JSON.parse(raw), {
+    source: basename(inputPath),
+    ...(instructRaw !== undefined ? { instruct: instructRaw } : {}),
+  }));
 } catch (err) {
   console.error(`convert failed: ${(err as Error).message}`);
   process.exit(1);

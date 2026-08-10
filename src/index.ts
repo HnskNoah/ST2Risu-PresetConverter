@@ -5,9 +5,10 @@ import { mapPrompts } from './mapPrompts.js';
 import { mapRegexes } from './mapRegexes.js';
 import { buildModule } from './mapTriggers.js';
 import { mapToggles } from './mapToggles.js';
-import type { ConvertResult } from './types.js';
+import { mapInstruct } from './mapInstruct.js';
+import type { ConvertOptions, ConvertResult } from './types.js';
 
-export function convert(tavernJson: unknown, opts: { source?: string } = {}): ConvertResult {
+export function convert(tavernJson: unknown, opts: ConvertOptions = {}): ConvertResult {
   const report = createReport(opts.source ?? 'preset');
   const ir = parseST(tavernJson);
   const fields = mapFields(ir.topLevel, report);
@@ -24,6 +25,17 @@ export function convert(tavernJson: unknown, opts: { source?: string } = {}): Co
     regex,
     ...(toggles.toggleTemplate ? { customPromptTemplateToggle: toggles.toggleTemplate } : {}),
   };
+  // round17: 可选第二输入 ST instruct preset(显式 opts.instruct,或主预设顶层 instruct 块)
+  const instrRaw = opts.instruct ?? ir.topLevel.instruct;
+  if (instrRaw && typeof instrRaw === 'object' && !Array.isArray(instrRaw)) {
+    const instr = mapInstruct(instrRaw);
+    Object.assign(preset, instr);
+    report.add('topLevel', {
+      field: 'instruct',
+      action: 'converted',
+      reason: `instruct 模式开启:instructChatTemplate=jinja,useInstructPrompt=true,JinjaTemplate(${instr.JinjaTemplate.length} 字符)`,
+    });
+  }
   const module = buildModule({ setvars, source: opts.source ?? 'preset' })?.module ?? null;
   return { preset, report, module };
 }

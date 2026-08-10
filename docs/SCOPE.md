@@ -14,6 +14,7 @@
 | 5 | 正则深度过滤 | ✅ M3 已实现 | minDepth/maxDepth → OUT `{{#if}}` 守卫 + `<cbs>` + in 吞换行(round5 §7);`{{chatindex}}=-1` 边界报 degraded |
 | 6 | setvar/addvar/incvar/decvar → start 触发器 | ✅ round10 已实现 | `mapTriggers.ts` 提取为 start 触发器 setvar effect(每次 prompt 构建前执行),从卡文本剔除宏;嵌套宏值用 `setvarParse.ts` 平衡解析提取。输出 `<base>.module.json`(risuModule)。详见 DESIGN #14、docs/research/round10-risu-triggers.md |
 | 7 | 变量卡组 → customPromptTemplateToggle | ✅ round11 已实现 | ST"开关卡"=候选卡组+enabled 快照;`mapToggles.ts` → select 保留全部选项,消费点 `{{getvar::X}}` → N 分支 if 内容注入(默认项 or-null 兜底),写入 `preset.customPromptTemplateToggle`;toggle 化变量从触发器排除。详见 DESIGN #15、docs/research/round11-risu-toggle.md |
+| 7b | instruct 模式三件套 | ✅ round17 已实现 | ST instruct preset(`--instruct <file>` 第二输入,或主预设顶层 `instruct` 块)→ `useInstructPrompt` + `instructChatTemplate='jinja'` + `JinjaTemplate`(官方 prompt.ts 算法蓝本;修复官方 first/last_output_sequence 丢弃与 story_string 预处理误删)。详见 docs/research/round17-instruct-mode.md |
 
 ## 二、待决策(需要拍板方向)
 

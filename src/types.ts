@@ -121,6 +121,9 @@ export interface RisuPreset extends MapFieldsResult {
   promptTemplate: RisuPromptCard[];
   regex: RisuCustomScript[];
   customPromptTemplateToggle?: string;
+  useInstructPrompt?: boolean;
+  instructChatTemplate?: string;
+  JinjaTemplate?: string;
 }
 
 // —— 触发器(ST setvar 宏 → Risu trigger)——
@@ -159,6 +162,12 @@ export interface ToggleDef {
   label: string;
   options: ToggleOption[];
   defaultIndex: number;
+}
+
+export interface ConvertOptions {
+  source?: string;
+  /** 可选第二输入:ST instruct preset(instruct/<name>.json 顶层序列字段,或 {instruct:{...}} 嵌套) */
+  instruct?: unknown;
 }
 
 export interface ConvertResult {

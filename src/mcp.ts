@@ -45,11 +45,12 @@ server.registerTool(
     inputSchema: z.object({
       tavern_json: z.unknown().describe('SillyTavern 预设对象(顶层含 prompts/prompt_order 的 JSON)'),
       source: z.string().optional().describe('预设来源名(用于报告标识)'),
+      instruct_json: z.unknown().optional().describe('可选第二输入:ST instruct preset 对象(序列字段或 {instruct:{...}}),开启 Risu instruct 模式'),
     }),
   },
-  async ({ tavern_json, source }) => {
+  async ({ tavern_json, source, instruct_json }) => {
     try {
-      const { preset, module, report } = convert(tavern_json, { source });
+      const { preset, module, report } = convert(tavern_json, { source, ...(instruct_json !== undefined ? { instruct: instruct_json } : {}) });
       const manual = manualEntries(report);
       return {
         content: toText([
@@ -101,11 +102,12 @@ server.registerTool(
     inputSchema: z.object({
       tavern_json: z.unknown().describe('SillyTavern 预设对象'),
       source: z.string().optional().describe('预设来源名'),
+      instruct_json: z.unknown().optional().describe('可选第二输入:ST instruct preset 对象,开启 Risu instruct 模式'),
     }),
   },
-  async ({ tavern_json, source }) => {
+  async ({ tavern_json, source, instruct_json }) => {
     try {
-      const { preset, module, report } = convert(tavern_json, { source });
+      const { preset, module, report } = convert(tavern_json, { source, ...(instruct_json !== undefined ? { instruct: instruct_json } : {}) });
       const v = validateAll(preset, module);
       const manual = manualEntries(report);
       const lines = [
